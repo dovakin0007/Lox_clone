@@ -1,10 +1,14 @@
 pub mod token;
 mod scanner;
+mod ast;
+mod astprinter;
+mod parser;
 
 use std::{env, process, fs};
 use std::io::stdin;
 use std::process::exit;
 use proc_macro2;
+use crate::token::{Token, TokenType};
 
 // #[derive(Debug)]
 
@@ -13,7 +17,6 @@ fn main() {
 
     let args: Vec<String> = env::args().collect();
     dbg!(&args);
-    // awsedr
 
     if args.len() >4{
         println!("Usage: rlox [script]");
@@ -95,8 +98,12 @@ pub fn run(token_stream :&str){
     }
 }
 
-pub fn error (line: u32, message: &str){
-    report(line, "", message)
+pub fn error (token: Token, message: &str){
+        if token.t_type == TokenType::EOF {
+            report(token.line, "at end", message)
+        }else{
+            report(token.line, &*token.lexeme, message);
+        }
 }
 
 pub fn report(line: u32, where_line: &str, message: &str){

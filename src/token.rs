@@ -4,7 +4,7 @@ use std::fmt::{Display, Formatter};
 
 
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
     // Single-Char tokens
     LeftParen, RightParen, LeftBrace,
@@ -81,7 +81,7 @@ impl Display for TokenType {
 
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub t_type: TokenType,
     pub lexeme: String,

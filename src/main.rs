@@ -3,18 +3,17 @@ mod scanner;
 mod ast;
 mod astprinter;
 mod parser;
+mod interpreter;
 
 use std::{env, process, fs};
 use std::io::stdin;
 use std::process::exit;
-use proc_macro2;
+use crate::ast::Expr;
+use crate::parser::Parser;
 use crate::token::{Token, TokenType};
-
-// #[derive(Debug)]
 
 static mut HAD_ERROR: bool = false;
 fn main() {
-
     let args: Vec<String> = env::args().collect();
     dbg!(&args);
 
@@ -27,9 +26,7 @@ fn main() {
         println!("{:?}", path);
         match path {
             Some(x) => {
-                run_file(x).unwrap_or(
-                    process::exit(1)
-                );
+                run_file(x).unwrap_or_else(|_| exit(1));
             },
             None => {
                 println!("Usage: rlox [script]");
@@ -51,8 +48,8 @@ pub fn run_prompt() -> Result<(), Box<dyn std::error::Error + 'static>>{
     loop {
         print!("> ");
         stdin().read_line(&mut buffer)?;
-        let res = match buffer.trim_end() {
-            "" => {
+        let res = match buffer.trim_end().as_bytes() {
+            b"" => {
                 exit(1);
             },
             line => line,
@@ -68,12 +65,14 @@ pub fn run_file(my_str: &str) -> Result<(), Box<dyn std::error::Error + 'static>
     let bytes=fs::read_to_string(my_str);
     match bytes {
         Ok(token_string) => {
-            let current_lines = token_string.split("\n").collect::<Vec<&str>>();
-            for (index, token_string ) in current_lines.iter().enumerate() {
-                println!("Line No: {}", index);
-                run(token_string);
-                unsafe {HAD_ERROR= false}
-            }
+            let current_lines = token_string.into_bytes();
+            // for (index, token_string ) in current_lines.iter().enumerate() {
+            //     println!("Line No: {}", index);
+            //     // run(token_string);
+            //     println!("{:?}", current_lines);
+            //     unsafe {HAD_ERROR= false}
+            // }
+            run(&current_lines);
             Ok(())
         }
         Err(e) => if e.kind() == std::io::ErrorKind::Interrupted{
@@ -84,18 +83,28 @@ pub fn run_file(my_str: &str) -> Result<(), Box<dyn std::error::Error + 'static>
     }
 }
 
-pub fn run(token_stream :&str){
-   let stream: proc_macro2::TokenStream = token_stream.parse().unwrap();
-    let vec_token_stream = stream.into_iter().collect::<Vec<_>>();
-    for t in vec_token_stream{
-        println!("{:?}", t);
-        unsafe {
-            if HAD_ERROR {
-                exit(65);
-            }
-        }
+pub fn run(token_stream : &[u8]){
+   // let stream: proc_macro2::TokenStream = token_stream.parse().unwrap();
+   //  let vec_token_stream = stream.into_iter().collect::<Vec<_>>();
+   //  for t in vec_token_stream{
+   //      println!("{:?}", t);
+   //      unsafe {
+   //          if HAD_ERROR {
+   //              exit(65);
+   //          }
+   //      }
+   //
+   //  }
 
-    }
+    let mut scanner = scanner::Scanner::new(&*token_stream);
+    let tokens= scanner.scan_tokens();
+
+    let mut  parser:Parser= Parser::new(tokens);
+    let expressions:Expr = parser.parse();
+    let mut interpreter = interpreter::Interpreter::new();
+    interpreter.interpret(expressions);
+
+
 }
 
 pub fn error (token: Token, message: &str){

@@ -78,9 +78,8 @@ impl Display for TokenType {
     }
 }
 
-
-
-
+//Token struct to present a token
+//lexeme might be used for identifier I guess
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub t_type: TokenType,

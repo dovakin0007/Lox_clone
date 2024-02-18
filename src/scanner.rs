@@ -1,9 +1,10 @@
 
-use crate::{error, report};
+use crate::report;
 use crate::token::TokenType;
 use crate::token::Token;
-use crate::token::TokenType::{DoubleSlash, Number, Slash};
 
+//TODO ADD BETTER ERROR HANDLING
+//Takes in bytes as input ands tokenizes it
 
 pub struct Scanner<'a>{
      source: &'a [u8],
@@ -21,10 +22,12 @@ impl <'a> Scanner<'a> {
             line: 1,
         }
     }
+
+    //return a vector of tokens
     pub fn scan_tokens(&mut self) -> Vec<Token> {
         let mut vec_tokens: Vec<Token> = vec![];
 
-        while (!self.at_end()) {
+        while !self.at_end() {
             self.start = self.current;
             match self.scan_token() {
                 Ok(Some(token)) => vec_tokens.push(token),
@@ -32,16 +35,17 @@ impl <'a> Scanner<'a> {
                 Err(()) => {}
             };
         }
-        vec_tokens.push((Token {
+        vec_tokens.push(Token {
             t_type: TokenType::EOF,
             lexeme: String::new(),
             line: self.line as u32
         }
-        ));
+        );
 
         return vec_tokens;
     }
 
+    //checks if the character matches if it does gives its own token Type else Throws and error
     fn scan_token(&mut self) -> Result<Option<Token>, ()> {
         let c = self.advance();
         match c {
@@ -91,7 +95,7 @@ impl <'a> Scanner<'a> {
                     }
                     None
                 }else {
-                    Some(self.add_token(Slash))
+                    Some(self.add_token(TokenType::Slash))
                 })
             }
 
@@ -138,13 +142,10 @@ impl <'a> Scanner<'a> {
 
                 }else { let _ = report(self.line as u32, "at the", "Unexpected char");  Err(()) };
                 return c;
-
-
-
             }
         }
     }
-
+    //Creates an token
     fn add_token(&mut self, t_type: TokenType) -> Token {
         return Token {
             t_type,
@@ -153,19 +154,23 @@ impl <'a> Scanner<'a> {
         }
     }
 
+    // gets the current positions token value or char
     fn peek(&mut self) -> u8 {
         *self.source.get(self.current + 0).unwrap_or(&b'\0')
     }
 
+    //returns the next position token value or char
     fn peek_next(&mut self) -> u8 {
         *self.source.get(self.current + 1).unwrap_or(&b'\0')
     }
+
 
     fn is_alpha(&self, c: u8) -> bool {
         return c.is_ascii_alphabetic() || c == b'_';
     }
 
-    fn match_by(&mut self, c: u8) -> bool {
+    //checks whether its character or EOF
+    fn match_by(&mut self, _: u8) -> bool {
         if self.at_end() == true {
             return false;
         }
@@ -176,22 +181,26 @@ impl <'a> Scanner<'a> {
         true
     }
 
+    //moves one index returns previous index value
     fn advance(&mut self) -> u8 {
         let c = self.source[self.current];
         self.current += 1;
         return c
     }
 
+    //checks whether the length or array is greater than index
     fn at_end(&self) -> bool {
         return self.current >= self.source.len();
     }
 
+    //returns a substring or returns an error
     fn sub_string(&self, start: usize, current: usize) -> Result<String, ()> {
-        return String::from_utf8(self.source[start..current].to_vec()).map_err(|err| {
+        return String::from_utf8(self.source[start..current].to_vec()).map_err(|_| {
             report(self.line as u32, "at the ","Invalid Character");
         })
     }
 
+    // returns whether its a string literal idk whats that called or throws an error
     fn string(&mut self) -> Result<Option<Token>, ()> {
         while self.peek() != b'"'  && !self.at_end(){
             if self.peek()==b'\n'{
@@ -209,11 +218,11 @@ impl <'a> Scanner<'a> {
         println!("{:?}", self.add_token(TokenType::String(string.clone())));
         Ok(Some(self.add_token(TokenType::String(string))))
     }
-    fn is_digit(&mut self, c:u8 ) -> bool {
+    //returns whether its a digit or not
+    fn is_digit(&self, c:u8 ) -> bool {
         return c.is_ascii_digit()
     }
-
-
+    //return an number literal
     fn number(&mut self) ->Result<Option<Token>, ()>{
         while self.peek().is_ascii_digit(){
             self.advance();
@@ -229,7 +238,7 @@ impl <'a> Scanner<'a> {
 
         Ok(Some(self.add_token(TokenType::Number(num))))
     }
-
+    //return an identifier from reading a text file
     fn identifier(&mut self) -> String {
         while self.peek().is_ascii_alphanumeric()  {
             self.advance();

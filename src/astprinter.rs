@@ -2,6 +2,8 @@ use crate::ast::*;
 use crate::token::{Token, TokenType};
 
 
+
+//Ast Printer is used to print out the AST tree structure
 #[derive(Debug, PartialEq)]
 pub struct AstPrinter{
     str : String
@@ -14,11 +16,15 @@ impl AstPrinter {
         }
     }
 }
+
+//Implements Visitor Trait
 impl Visitor for AstPrinter {
     type E = String;
     type S = String;
 
-    fn visit_expression(&mut self, e: &Expr) -> String{
+
+    // Traverses tree recursively and represent an expression
+    fn visit_expression(&mut self, e: &Expr) -> Self::E{
         match *e {
             Expr::Binary {
                 ref left,

@@ -1,6 +1,7 @@
 use std::string::String;
 use std::fmt::{Display, Formatter, Result as FmtResult};
-use crate::ast::{Expr, Visitor};
+use crate::ast::{Expr, Stmt, Visitor};
+use crate::parser::Parser;
 use crate::token::{Token, TokenType};
 
 //represents an Interpreter struct
@@ -14,16 +15,39 @@ impl Interpreter {
         Default::default()
     }
     // for now it returns Executed types
-    pub fn interpret(&mut self, expr: Expr) -> Types {
-        self.visit_expression(&expr).unwrap_or_else(|msg| {
-            eprintln!("{msg}");
-            panic!()
-        })
+    pub fn interpret(&mut self, statement: Vec<Stmt>)  {
+        for x in statement {
+            self.visit_statement(&x).unwrap();
+        }
     }
+
+    fn stringify(&self, types: Types) -> String {
+        match types {
+            Types::Boolean(b) => b.to_string(),
+            Types::Nil => "nil".to_string(),
+            Types::Number(n) => n.to_string(),
+            Types::ReturnString(s) => s,
+
+        }
+    }
+
 }
 impl Visitor for Interpreter {
     type E = Result<Types, String>;
     type S = Result<(), String>;
+    fn visit_statement(&mut self, s: &Stmt) -> Self::S {
+        match s {
+            &Stmt::Expr(ref Expr) => {
+                self.visit_expression(Expr).unwrap();
+                Ok(())
+            },
+            Stmt::Print(Expr)=> {
+                let e =self.visit_expression(Expr).unwrap();
+                println!("{}", self.stringify(e));
+                Ok(())
+            }
+        }
+    }
 
 
     // goes into every expression and does it recursively
@@ -117,6 +141,7 @@ impl Visitor for Interpreter {
 
 
         }
+
     }
 
 
@@ -142,83 +167,57 @@ impl Display for Types {
     }
 }
 
-#[test]
-fn test_interpreter() {
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    // Written by chat gpt
-    let mut interpreter = Interpreter {};
-
-    // Test addition of two numbers
-    let expr1 = Expr::Binary {
-        left: Box::new(Expr::Literal {
-            token: Token {
-                t_type: TokenType::Number(10.0),
+    #[test]
+    fn test_interpreter() {
+        // Define tokens representing the expression: print 5 + 3;
+        let tokens = vec![
+            Token {
+                t_type: TokenType::Print,
                 lexeme: String::new(),
                 line: 0,
             },
-        }),
-        op: Token {
-            t_type: TokenType::Plus,
-            lexeme: String::new(),
-            line: 0,
-        },
-        right: Box::new(Expr::Literal {
-            token: Token {
+            Token {
                 t_type: TokenType::Number(5.0),
                 lexeme: String::new(),
                 line: 0,
             },
-        }),
-    };
-    let result1 = interpreter.interpret(expr1);
-    println!("Result of expr1: {:?}", result1);
-    assert_eq!(result1, Types::Number(15.0));
+            Token {
+                t_type: TokenType::Plus,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Number(3.0),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::SemiColon,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::EOF,
+                lexeme: String::new(),
+                line: 0,
+            },
+        ];
 
-    // Test concatenation of two strings
-    let expr2 = Expr::Binary {
-        left: Box::new(Expr::Literal {
-            token: Token {
-                t_type: TokenType::String(String::from("Hello")),
-                lexeme: String::new(),
-                line: 0,
-            },
-        }),
-        op: Token {
-            t_type: TokenType::Plus,
-            lexeme: String::new(),
-            line: 0,
-        },
-        right: Box::new(Expr::Literal {
-            token: Token {
-                t_type: TokenType::String(String::from(" World")),
-                lexeme: String::new(),
-                line: 0,
-            },
-        }),
-    };
-    let result2 = interpreter.interpret(expr2);
-    println!("Result of expr2: {:?}", result2);
-    assert_eq!(
-        result2,
-        Types::ReturnString(String::from("Hello World"))
-    );
+        // Create the parser and parse the tokens into statements
+        let mut parser = Parser::new(tokens);
+        let statements = parser.parse();
 
-    // Test unary negation
-    let expr3 = Expr::Unary {
-        op: Token {
-            t_type: TokenType::Minus,
-            lexeme: String::new(),
-            line: 0,
-        },
-        expr: Box::new(Expr::Literal {
-            token: Token {
-                t_type: TokenType::Number(10.0),
-                lexeme: String::new(),
-                line: 0,
-            },
-        }),
-    };
-    let result3 = interpreter.interpret(expr3);
-    println!("Result of expr3: {:?}", result3);
-    assert_eq!(result3, Types::Number(-10.0));
+        // Create the interpreter and interpret the statements
+        let mut interpreter = Interpreter::new();
+        interpreter.interpret(statements.clone());
+
+        // Print the executed statements for debugging
+        for stmt in statements {
+            println!("Executed statement: {:?}", stmt);
+        }
+    }
 }

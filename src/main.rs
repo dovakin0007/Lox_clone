@@ -8,7 +8,7 @@ mod interpreter;
 use std::{env, process, fs};
 use std::io::stdin;
 use std::process::exit;
-use crate::ast::Expr;
+use crate::ast::{Expr, Stmt};
 use crate::parser::Parser;
 use crate::token::{Token, TokenType};
 
@@ -100,10 +100,9 @@ pub fn run(token_stream : &[u8]){
     let tokens= scanner.scan_tokens();
 
     let mut  parser:Parser= Parser::new(tokens);
-    let expressions:Expr = parser.parse();
+    let expressions:Vec<Stmt> = parser.parse();
     let mut interpreter = interpreter::Interpreter::new();
     interpreter.interpret(expressions);
-
 
 }
 

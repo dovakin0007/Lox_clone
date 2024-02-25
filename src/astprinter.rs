@@ -22,7 +22,6 @@ impl Visitor for AstPrinter {
     type E = String;
     type S = String;
 
-
     // Traverses tree recursively and represent an expression
     fn visit_expression(&mut self, e: &Expr) -> Self::E{
         match *e {
@@ -45,6 +44,13 @@ impl Visitor for AstPrinter {
                 ref expr,
                 ..
             } => format!("(Unary {:?} {:?})", op, self.visit_expression(expr))
+        }
+    }
+
+    fn visit_statement(&mut self, s: &Stmt) -> Self::S {
+        match *s {
+            Stmt::Expr(ref expr) => format!("(Expression Statement {})", self.visit_expression(expr)),
+            Stmt::Print(ref expr) => format!("{}", self.visit_expression(expr).as_str())
         }
     }
 

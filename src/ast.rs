@@ -7,11 +7,12 @@ pub trait Visitor{
     type E;
     type S;
     fn visit_expression(&mut self, e:&Expr) -> Self::E;
+    fn visit_statement(&mut self, s: &Stmt) -> Self::S;
 }
 
 
 //Represents an expression which gets stored in AST
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Expr {
     Binary{
         left: Box<Expr>,
@@ -28,5 +29,10 @@ pub enum Expr {
         op: Token,
         expr: Box<Expr>,
     }
+}
+#[derive(Debug, PartialEq, Clone)]
+pub enum Stmt {
+    Expr(Expr),
+    Print(Expr)
 }
 

@@ -2,18 +2,24 @@ use std::string::String;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use crate::ast::{Expr, Stmt, Visitor};
 use crate::parser::Parser;
+use crate::environment::Environment;
 use crate::token::{Token, TokenType};
 
 //represents an Interpreter struct
-#[derive(Default)]
-pub struct Interpreter {}
+
+pub struct Interpreter {
+    environment: Environment
+}
 
 //
 impl Interpreter {
     //Does nothing for now?
     pub fn new() -> Self {
-        Default::default()
+        Self {
+            environment: Environment::new(),
+        }
     }
+
     // for now it returns Executed types
     pub fn interpret(&mut self, statement: Vec<Stmt>)  {
         for x in statement {
@@ -45,6 +51,27 @@ impl Visitor for Interpreter {
                 let e =self.visit_expression(Expr).unwrap();
                 println!("{}", self.stringify(e));
                 Ok(())
+            },
+            Stmt::VarDeclaration(Token,Expr) => {
+                match Expr {
+                    &Some(ref e) => {
+                        let var_name = match Token.t_type.clone() {
+                            TokenType::Identifier(x) => x,
+                            _ => String::from(""),
+                        };
+                        let result =  self.visit_expression(&e).unwrap();
+                        Ok(self.environment.define(var_name, Some(result)))
+
+                    }
+                    &None => {
+                        let var_name = match Token.t_type.clone() {
+                            TokenType::Identifier(x) => x,
+                            _ => String::from("")
+                        };
+                        Ok(self.environment.define(var_name, None))
+
+                    }
+                }
             }
         }
     }
@@ -136,10 +163,20 @@ impl Visitor for Interpreter {
                     (_, TokenType::Bang) => Ok(Types::Boolean(false)),
                     _ => Err(String::from(format!("Invalid type at line {}", op.line.clone())))
                 }
+            },
+            &Expr::Variable {
+                ref name
+            } => {
+                let name = match name.t_type.clone() {
+                    TokenType::Identifier(x) => x,
+                    _ => String::from("")
+                };
+                match self.environment.get(name).unwrap() {
+                    Some(v) => Ok(v),
+                    None => Ok(Types::Nil)
+                }
             }
         }
-
-
         }
 
     }
@@ -147,7 +184,7 @@ impl Visitor for Interpreter {
 
 
 // A simple type system to make it usable like JAVA Object in the Book
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Types {
         Number(f64),
         ReturnString(String),
@@ -192,6 +229,83 @@ mod tests {
             },
             Token {
                 t_type: TokenType::Number(3.0),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::SemiColon,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::EOF,
+                lexeme: String::new(),
+                line: 0,
+            },
+        ];
+
+        // Create the parser and parse the tokens into statements
+        let mut parser = Parser::new(tokens);
+        let statements = parser.parse();
+
+        // Create the interpreter and interpret the statements
+        let mut interpreter = Interpreter::new();
+        interpreter.interpret(statements.clone());
+
+        // Print the executed statements for debugging
+        for stmt in statements {
+            println!("Executed statement: {:?}", stmt);
+        }
+    }
+
+    #[test]
+    fn test_var_declaration() {
+        // Define tokens representing variable declarations: var x; and var y = 10 + 5;
+        let tokens = vec![
+            // var x;
+            Token {
+                t_type: TokenType::Var,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Identifier(String::from("x")),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::SemiColon,
+                lexeme: String::new(),
+                line: 0,
+            },
+            // var y = 10 + 5;
+            Token {
+                t_type: TokenType::Var,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Identifier(String::from("y")),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Equal,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Number(10.0),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Plus,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Number(5.0),
                 lexeme: String::new(),
                 line: 0,
             },

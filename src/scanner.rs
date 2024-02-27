@@ -170,7 +170,7 @@ impl <'a> Scanner<'a> {
     }
 
     //checks whether its character or EOF
-    fn match_by(&mut self, _: u8) -> bool {
+    fn match_by(&mut self, c: u8) -> bool {
         if self.at_end() == true {
             return false;
         }
@@ -178,7 +178,7 @@ impl <'a> Scanner<'a> {
             return false;
         }
         self.current += 1;
-        true
+        return self.peek() == c
     }
 
     //moves one index returns previous index value

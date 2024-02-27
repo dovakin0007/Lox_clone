@@ -2,6 +2,7 @@ use crate::token::{Token, TokenType};
 use crate::ast::{Expr, Stmt};
 
 
+
 // #[derive(Debug)]
 // pub struct ParseError;
 //
@@ -33,7 +34,7 @@ impl Parser {
     pub fn parse(&mut self) -> Vec<Stmt>{
         let mut statements: Vec<Stmt> = Vec::new();
         while(self.peek().unwrap().t_type != TokenType::EOF){
-            statements.push(self.statement())
+            statements.push(self.declaration())
         }
         return statements
     }
@@ -45,7 +46,7 @@ impl Parser {
 
     //using recursive decent parsing method
 
-    //checks whether the expression is an equality expression returns an expression 
+    //checks whether the expression is an equality expression returns an expression
     fn equality(&mut self) -> Expr {
         let mut expr = self.comparison();
         //dbg!(&self.peek().unwrap());
@@ -140,6 +141,9 @@ impl Parser {
                 self.consume(TokenType::RightParen, "Expect ')' after expression.").unwrap();
                 Expr::Grouping {expr:Box::new(expr)}
             },
+            TokenType::Identifier(_) => Expr::Variable {
+                name: previous_token.clone()
+            },
             _ => panic!("Expects a expression at {} {:?}", previous_token.line.clone(), previous_token)
         }
     }
@@ -167,6 +171,27 @@ impl Parser {
         }
     }
 
+    fn declaration(&mut self) -> Stmt {
+        match self.peek().unwrap().t_type {
+            TokenType::Var => self.var_declaration(),
+            _ => self.statement()
+
+        }
+    }
+
+    fn var_declaration (&mut self) -> Stmt {
+        let token = self.consume_identifier("Expect variable name").unwrap().clone();
+        dbg!(self.peek().unwrap().t_type.clone());
+        let initializer = if self.peek().unwrap().t_type.clone() == TokenType::Equal{
+                self.advance();
+                Some(self.expression())
+            }else { None };
+
+        let _ = self.consume(self.peek().unwrap().t_type.clone(), "Expected `;` after variable declaration").unwrap();
+        Stmt::VarDeclaration(token, initializer)
+    }
+
+
     fn statement(&mut self) -> Stmt {
         return match self.advance().unwrap().t_type {
             TokenType::Print => self.print_statement(),
@@ -185,7 +210,6 @@ impl Parser {
         self.consume(TokenType::SemiColon, "Expect ';' after value.").unwrap();
         Stmt::Expr(expr)
     }
-
 
 
     //return the current value or current token based on the index
@@ -217,6 +241,16 @@ impl Parser {
             crate::error(self.peek().unwrap().clone(), error_msg);
             Err(())
         }
+    }
+
+    fn consume_identifier(&mut self, error_msg: &str) -> Result<Token, ()> {
+        self.advance().unwrap();
+        let token_type = self.peek().unwrap().t_type.clone();
+        match token_type {
+            TokenType::Identifier(_) => self.consume(token_type, error_msg),
+            _ => Err(())
+        }
+
     }
     //gets the previous element in the vector
     fn previous(&mut self) -> Option<&Token>{
@@ -447,6 +481,109 @@ mod tests {
             Some(stmt) => println!("Parsed statement: {:?}", stmt),
             None => println!("No statement parsed"),
         }
+    }
+    #[test]
+    fn test_variable_declaration() {
+        // Define tokens representing the variable declaration: var x = 5;
+        let tokens = vec![
+            Token {
+                t_type: TokenType::Var,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Identifier(String::from("x")),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Equal,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Number(5.0),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::SemiColon,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::EOF,
+                lexeme: String::new(),
+                line: 0,
+            },
+        ];
+
+        // Create the parser and parse the tokens into statements
+        let mut parser = Parser::new(tokens);
+        let statements = parser.parse();
+
+        // Validate the output
+        assert_eq!(
+            statements,
+            vec![Stmt::VarDeclaration(
+                Token {
+                    t_type: TokenType::Identifier(String::from("x")),
+                    lexeme: String::new(),
+                    line: 0,
+                },
+                Some(Expr::Literal {
+                    token: Token {
+                        t_type: TokenType::Number(5.0),
+                        lexeme: String::new(),
+                        line: 0,
+                    },
+                })
+            )]
+        );
+    }
+
+    #[test]
+    fn test_uninitialized_variable_declaration() {
+        // Define tokens representing the variable declaration: var x;
+        let tokens = vec![
+            Token {
+                t_type: TokenType::Var,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Identifier(String::from("x")),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::SemiColon,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::EOF,
+                lexeme: String::new(),
+                line: 0,
+            },
+        ];
+
+        // Create the parser and parse the tokens into statements
+        let mut parser = Parser::new(tokens);
+        let statements = parser.parse();
+
+        // Validate the output
+        assert_eq!(
+            statements,
+            vec![Stmt::VarDeclaration(
+                Token {
+                    t_type: TokenType::Identifier(String::from("x")),
+                    lexeme: String::new(),
+                    line: 0,
+                },
+                None // Expecting no initialization expression
+            )]
+        );
     }
 
 }

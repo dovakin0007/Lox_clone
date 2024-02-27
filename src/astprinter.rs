@@ -1,3 +1,4 @@
+use std::fmt::format;
 use crate::ast::*;
 use crate::token::{Token, TokenType};
 
@@ -43,14 +44,24 @@ impl Visitor for AstPrinter {
                 ref op,
                 ref expr,
                 ..
-            } => format!("(Unary {:?} {:?})", op, self.visit_expression(expr))
+            } => format!("(Unary {:?} {:?})", op, self.visit_expression(expr)),
+            Expr::Variable {
+                ref name,
+                ..
+            } => format!("(Variable {:?})", name)
         }
     }
 
     fn visit_statement(&mut self, s: &Stmt) -> Self::S {
         match *s {
             Stmt::Expr(ref expr) => format!("(Expression Statement {})", self.visit_expression(expr)),
-            Stmt::Print(ref expr) => format!("{}", self.visit_expression(expr).as_str())
+            Stmt::Print(ref expr) => format!("Print Statement {}", self.visit_expression(expr).as_str()),
+            Stmt::VarDeclaration(ref token, ref expr_opt) => format!("Variable Declaration {:?} {:?}", token,
+                                                                     match expr_opt {
+                &Some(ref expr) => self.visit_expression(expr),
+                &None => "nil".to_string(),
+            }
+            )
         }
     }
 

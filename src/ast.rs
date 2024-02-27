@@ -28,11 +28,15 @@ pub enum Expr {
     Unary {
         op: Token,
         expr: Box<Expr>,
+    },
+    Variable{
+        name: Token
     }
 }
 #[derive(Debug, PartialEq, Clone)]
 pub enum Stmt {
     Expr(Expr),
-    Print(Expr)
+    Print(Expr),
+    VarDeclaration(Token, Option<Expr>)
 }
 

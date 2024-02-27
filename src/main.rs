@@ -4,6 +4,7 @@ mod ast;
 mod astprinter;
 mod parser;
 mod interpreter;
+mod environment;
 
 use std::{env, process, fs};
 use std::io::stdin;
@@ -15,7 +16,6 @@ use crate::token::{Token, TokenType};
 static mut HAD_ERROR: bool = false;
 fn main() {
     let args: Vec<String> = env::args().collect();
-    dbg!(&args);
 
     if args.len() >4{
         println!("Usage: rlox [script]");

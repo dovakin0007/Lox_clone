@@ -174,11 +174,11 @@ impl <'a> Scanner<'a> {
         if self.at_end() == true {
             return false;
         }
-        if self.peek() == b'\0' {
+        if self.peek() != c {
             return false;
         }
         self.current += 1;
-        return self.peek() == c
+        return true
     }
 
     //moves one index returns previous index value

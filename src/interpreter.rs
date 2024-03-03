@@ -80,8 +80,18 @@ impl Visitor for Interpreter {
     // goes into every expression and does it recursively
     fn visit_expression(&mut self, e: &Expr) -> Self::E {
         match e {
-
             //executes for binary expression
+            &Expr::Assign {
+                ref name,
+                ref value,
+                ..
+            } => {
+                let new_value = self.visit_expression(value)?;
+
+                self.environment.assign(&name, &new_value)?;
+                return Ok(new_value)
+            },
+
             &Expr::Binary {
                 ref left,
                 ref op,
@@ -334,4 +344,114 @@ mod tests {
             println!("Executed statement: {:?}", stmt);
         }
     }
+
+    #[test]
+    fn test_assignment() {
+        let mut interpreter = Interpreter::new();
+
+        // Simulate a variable declaration: var x = 10;
+        let stmt1 = Stmt::VarDeclaration(
+            Token {
+                t_type: TokenType::Identifier(String::from("x")),
+                lexeme: String::from("x"),
+                line: 0,
+            },
+            Some(Expr::Literal {
+                token: Token {
+                    t_type: TokenType::Number(10.0),
+                    lexeme: String::from("10"),
+                    line: 0,
+                },
+            }),
+        );
+
+        // Execute the variable declaration
+        interpreter.visit_statement(&stmt1).unwrap();
+
+        // Simulate an assignment: x = 20;
+        let stmt2 = Stmt::Expr(Expr::Assign {
+            name: Token {
+                t_type: TokenType::Identifier(String::from("x")),
+                lexeme: String::from("x"),
+                line: 0,
+            },
+            value: Box::new(Expr::Literal {
+                token: Token {
+                    t_type: TokenType::Number(20.0),
+                    lexeme: String::from("20"),
+                    line: 0,
+                },
+            }),
+        });
+
+        // Execute the assignment
+        interpreter.visit_statement(&stmt2).unwrap();
+
+        // Verify that the value of x has been updated to 20
+        let value_of_x = interpreter.environment.get(String::from("x")).unwrap().unwrap();
+        assert_eq!(value_of_x, Types::Number(20.0));
+    }
+
+    #[test]
+    fn test_assignment_usage_in_different_statement() {
+        let mut interpreter = Interpreter::new();
+
+        // Simulate a variable declaration: var x = 5;
+        let stmt1 = Stmt::VarDeclaration(
+            Token {
+                t_type: TokenType::Identifier(String::from("x")),
+                lexeme: String::from("x"),
+                line: 0,
+            },
+            Some(Expr::Literal {
+                token: Token {
+                    t_type: TokenType::Number(5.0),
+                    lexeme: String::from("5"),
+                    line: 0,
+                },
+            }),
+        );
+
+        // Execute the variable declaration
+        interpreter.visit_statement(&stmt1).unwrap();
+
+        // Simulate a variable declaration using the value of x: var y = x + x;
+        let stmt2 = Stmt::VarDeclaration(
+            Token {
+                t_type: TokenType::Identifier(String::from("y")),
+                lexeme: String::from("y"),
+                line: 0,
+            },
+            Some(Expr::Binary {
+                left: Box::new(Expr::Variable {
+                    name: Token {
+                        t_type: TokenType::Identifier(String::from("x")),
+                        lexeme: String::from("x"),
+                        line: 0,
+                    },
+                }),
+                op: Token {
+                    t_type: TokenType::Plus,
+                    lexeme: String::from("+"),
+                    line: 0,
+                },
+                right: Box::new(Expr::Variable {
+                    name: Token {
+                        t_type: TokenType::Identifier(String::from("x")),
+                        lexeme: String::from("x"),
+                        line: 0,
+                    },
+                }),
+            }),
+        );
+
+        // Execute the variable declaration using the value of x
+        interpreter.visit_statement(&stmt2).unwrap();
+
+        // Verify that the value of y is equal to 10 (x + x)
+        let value_of_y = interpreter.environment.get(String::from("y")).unwrap().unwrap();
+        assert_eq!(value_of_y, Types::Number(10.0));
+    }
+
+
 }

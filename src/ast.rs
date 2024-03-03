@@ -14,6 +14,11 @@ pub trait Visitor{
 //Represents an expression which gets stored in AST
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expr {
+
+    Assign {
+        name: Token,
+        value: Box<Expr>
+    },
     Binary{
         left: Box<Expr>,
         op: Token,

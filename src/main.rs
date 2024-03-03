@@ -9,6 +9,7 @@ mod environment;
 use std::{env, process, fs};
 use std::io::stdin;
 use std::process::exit;
+use log::debug;
 use crate::ast::{Expr, Stmt};
 use crate::parser::Parser;
 use crate::token::{Token, TokenType};
@@ -72,6 +73,7 @@ pub fn run_file(my_str: &str) -> Result<(), Box<dyn std::error::Error + 'static>
             //     println!("{:?}", current_lines);
             //     unsafe {HAD_ERROR= false}
             // }
+            // println!("{:?}", current_lines);
             run(&current_lines);
             Ok(())
         }

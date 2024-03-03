@@ -38,13 +38,78 @@ impl Parser {
         }
         return statements
     }
-    fn expression(&mut self) -> Expr {
-        return self.equality()
 
+
+    fn declaration(&mut self) -> Stmt {
+        match self.peek().unwrap().t_type {
+            TokenType::Var => self.var_declaration(),
+            _ => self.statement()
+
+        }
+    }
+
+    fn var_declaration (&mut self) -> Stmt {
+        let token = self.consume_identifier("Expect variable name").unwrap().clone();
+        let initializer = if self.peek().unwrap().t_type.clone() == TokenType::Equal{
+            self.advance();
+            Some(self.expression())
+        }else { None };
+
+        let _ = self.consume(self.peek().unwrap().t_type.clone(), "Expected `;` after variable declaration").unwrap();
+        Stmt::VarDeclaration(token, initializer)
     }
 
 
+
+    fn statement(&mut self) -> Stmt {
+        return match self.peek().unwrap().t_type {
+            TokenType::Print => {
+                self.advance();
+                self.print_statement()
+            },
+            _ => self.expression_statement()
+        }
+    }
+
+    fn print_statement(&mut self) -> Stmt {
+        let expr =self.expression();
+        self.consume(TokenType::SemiColon, "Expect ';' after value.").unwrap();
+        Stmt::Print(expr)
+    }
+
+    fn expression_statement(&mut self) -> Stmt{
+        let expr = self.expression();
+        self.consume(TokenType::SemiColon, "Expect ';' after value.").unwrap();
+        Stmt::Expr(expr)
+    }
     //using recursive decent parsing method
+    fn expression(&mut self) -> Expr {
+        return self.assignment();
+    }
+
+    fn assignment(&mut self) -> Expr {
+
+       let mut expr = self.equality();
+
+        if let Some(_) = match self.peek().unwrap().t_type {
+            TokenType::Equal => self.advance(),
+            _ => None,
+        }{
+            let value = self.assignment();
+            match expr {
+                Expr::Variable { name, ..} => {
+                    return Expr::Assign {
+                        name: name,
+                        value: Box::new(value)
+                    }
+
+                }
+                _ => panic!("unable to assign ")
+            }
+
+        }
+        return expr
+    }
 
     //checks whether the expression is an equality expression returns an expression
     fn equality(&mut self) -> Expr {
@@ -127,10 +192,10 @@ impl Parser {
     }
     // returns a literal such as String, bool, Number and also grouping expression
     fn primary(&mut self) -> Expr {
-        self.advance().unwrap();
-        //dbg!(&self.peek().unwrap());
-        let previous_token = self.previous().unwrap();
-        return match previous_token.t_type.clone() {
+        dbg!(&self.peek().unwrap());
+        let previous_token = self.peek().unwrap().clone();
+
+        let expr =  match previous_token.t_type {
             TokenType::False => Expr::Literal { token: previous_token.clone() },
             TokenType::True => Expr::Literal { token: previous_token.clone() },
             TokenType::Nil => Expr::Literal { token: previous_token.clone() },
@@ -141,11 +206,18 @@ impl Parser {
                 self.consume(TokenType::RightParen, "Expect ')' after expression.").unwrap();
                 Expr::Grouping {expr:Box::new(expr)}
             },
-            TokenType::Identifier(_) => Expr::Variable {
+            TokenType::Identifier(_) => {
+
+                Expr::Variable {
                 name: previous_token.clone()
+                }
             },
-            _ => panic!("Expects a expression at {} {:?}", previous_token.line.clone(), previous_token)
-        }
+
+
+            _ => panic!("Expects a expression at {} {:?}", previous_token.line.clone(), previous_token),
+        };
+        self.advance();
+        return expr
     }
 
    //TODO
@@ -171,45 +243,7 @@ impl Parser {
         }
     }
 
-    fn declaration(&mut self) -> Stmt {
-        match self.peek().unwrap().t_type {
-            TokenType::Var => self.var_declaration(),
-            _ => self.statement()
 
-        }
-    }
-
-    fn var_declaration (&mut self) -> Stmt {
-        let token = self.consume_identifier("Expect variable name").unwrap().clone();
-        dbg!(self.peek().unwrap().t_type.clone());
-        let initializer = if self.peek().unwrap().t_type.clone() == TokenType::Equal{
-                self.advance();
-                Some(self.expression())
-            }else { None };
-
-        let _ = self.consume(self.peek().unwrap().t_type.clone(), "Expected `;` after variable declaration").unwrap();
-        Stmt::VarDeclaration(token, initializer)
-    }
-
-
-    fn statement(&mut self) -> Stmt {
-        return match self.advance().unwrap().t_type {
-            TokenType::Print => self.print_statement(),
-            _ => self.expression_statement()
-        }
-    }
-
-    fn print_statement(&mut self) -> Stmt {
-        let expr =self.expression();
-        self.consume(TokenType::SemiColon, "Expect ';' after value.").unwrap();
-        Stmt::Print(expr)
-    }
-
-    fn expression_statement(&mut self) -> Stmt{
-        let expr = self.expression();
-        self.consume(TokenType::SemiColon, "Expect ';' after value.").unwrap();
-        Stmt::Expr(expr)
-    }
 
 
     //return the current value or current token based on the index
@@ -261,154 +295,6 @@ impl Parser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // these are generated by ChatGpt idk how to write test cases lol
-    // #[test]
-    // fn test_parse() {
-    //     // Tokens representing a simple expression: 1 + 2
-    //     let tokens = vec![
-    //         Token {
-    //             t_type: TokenType::Number(1.0),
-    //             lexeme: String::new(),
-    //             line: 0,
-    //         },
-    //         Token {
-    //             t_type: TokenType::Plus,
-    //             lexeme: String::new(),
-    //             line: 0,
-    //         },
-    //         Token {
-    //             t_type: TokenType::Number(2.0),
-    //             lexeme: String::new(),
-    //             line: 0,
-    //         },
-    //         Token {
-    //             t_type: TokenType::EOF,
-    //             lexeme: String::new(),
-    //             line: 0,
-    //         },
-    //     ];
-    //
-    //     let mut parser = Parser::new(tokens);
-    //     let expr = parser.parse();
-    //
-    //     // Verify that the parsed expression matches the expected structure
-    //     assert_eq!(
-    //         expr,
-    //         Expr::Binary {
-    //             left: Box::new(Expr::Literal {
-    //                 token: Token {
-    //                     t_type: TokenType::Number(1.0),
-    //                     lexeme: String::new(),
-    //                     line: 0,
-    //                 }
-    //             }),
-    //             op: Token {
-    //                 t_type: TokenType::Plus,
-    //                 lexeme: String::new(),
-    //                 line: 0,
-    //             },
-    //             right: Box::new(Expr::Literal {
-    //                 token: Token {
-    //                     t_type: TokenType::Number(2.0),
-    //                     lexeme: String::new(),
-    //                     line: 0,
-    //                 }
-    //             })
-    //         }
-    //     );
-    // }
-    //
-    // #[test]
-    // fn test_parse_with_parentheses() {
-    //     // Tokens representing the expression: (1 + 2) * 3
-    //     let tokens = vec![
-    //         Token {
-    //             t_type: TokenType::LeftParen,
-    //             lexeme: String::new(),
-    //             line: 0,
-    //         },
-    //         Token {
-    //             t_type: TokenType::Number(1.0),
-    //             lexeme: String::new(),
-    //             line: 0,
-    //         },
-    //         Token {
-    //             t_type: TokenType::Plus,
-    //             lexeme: String::new(),
-    //             line: 0,
-    //         },
-    //         Token {
-    //             t_type: TokenType::Number(2.0),
-    //             lexeme: String::new(),
-    //             line: 0,
-    //         },
-    //         Token {
-    //             t_type: TokenType::RightParen,
-    //             lexeme: String::new(),
-    //             line: 0,
-    //         },
-    //         Token {
-    //             t_type: TokenType::Star,
-    //             lexeme: String::new(),
-    //             line: 0,
-    //         },
-    //         Token {
-    //             t_type: TokenType::Number(3.0),
-    //             lexeme: String::new(),
-    //             line: 0,
-    //         },
-    //         Token {
-    //             t_type: TokenType::EOF,
-    //             lexeme: String::new(),
-    //             line: 0,
-    //         },
-    //     ];
-    //
-    //     let mut parser = Parser::new(tokens);
-    //     let expr = parser.parse();
-    //
-    //     // Verify that the parsed expression matches the expected structure
-    //     assert_eq!(
-    //         expr,
-    //         Expr::Binary {
-    //             left: Box::new(Expr::Grouping {
-    //                 expr: Box::new(Expr::Binary {
-    //                     left: Box::new(Expr::Literal {
-    //                         token: Token {
-    //                             t_type: TokenType::Number(1.0),
-    //                             lexeme: String::new(),
-    //                             line: 0,
-    //                         }
-    //                     }),
-    //                     op: Token {
-    //                         t_type: TokenType::Plus,
-    //                         lexeme: String::new(),
-    //                         line: 0,
-    //                     },
-    //                     right: Box::new(Expr::Literal {
-    //                         token: Token {
-    //                             t_type: TokenType::Number(2.0),
-    //                             lexeme: String::new(),
-    //                             line: 0,
-    //                         }
-    //                     })
-    //                 })
-    //             }),
-    //             op: Token {
-    //                 t_type: TokenType::Star,
-    //                 lexeme: String::new(),
-    //                 line: 0,
-    //             },
-    //             right: Box::new(Expr::Literal {
-    //                 token: Token {
-    //                     t_type: TokenType::Number(3.0),
-    //                     lexeme: String::new(),
-    //                     line: 0,
-    //                 }
-    //             })
-    //         }
-    //     );
-    // }
 
     // Helper function to create tokens for testing
     #[test]
@@ -482,6 +368,7 @@ mod tests {
             None => println!("No statement parsed"),
         }
     }
+
     #[test]
     fn test_variable_declaration() {
         // Define tokens representing the variable declaration: var x = 5;
@@ -543,16 +430,21 @@ mod tests {
     }
 
     #[test]
-    fn test_uninitialized_variable_declaration() {
-        // Define tokens representing the variable declaration: var x;
+    fn test_assignment() {
+        // Tokens representing the assignment: x = 5;
         let tokens = vec![
             Token {
-                t_type: TokenType::Var,
+                t_type: TokenType::Identifier(String::from("x")),
                 lexeme: String::new(),
                 line: 0,
             },
             Token {
-                t_type: TokenType::Identifier(String::from("x")),
+                t_type: TokenType::Equal,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Number(5.0),
                 lexeme: String::new(),
                 line: 0,
             },
@@ -575,17 +467,21 @@ mod tests {
         // Validate the output
         assert_eq!(
             statements,
-            vec![Stmt::VarDeclaration(
-                Token {
+            vec![Stmt::Expr(Expr::Assign {
+                name: Token {
                     t_type: TokenType::Identifier(String::from("x")),
                     lexeme: String::new(),
                     line: 0,
                 },
-                None // Expecting no initialization expression
-            )]
+                value: Box::new(Expr::Literal {
+                    token: Token {
+                        t_type: TokenType::Number(5.0),
+                        lexeme: String::new(),
+                        line: 0,
+                    },
+                }),
+            })]
         );
     }
 
 }
-
-

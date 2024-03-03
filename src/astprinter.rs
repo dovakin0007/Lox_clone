@@ -26,6 +26,12 @@ impl Visitor for AstPrinter {
     // Traverses tree recursively and represent an expression
     fn visit_expression(&mut self, e: &Expr) -> Self::E{
         match *e {
+            Expr::Assign {
+                ref name,
+                ref value
+            } => {
+                format!("Assignment {:?} {:?}", name, self.visit_expression(value))
+            },
             Expr::Binary {
                 ref left,
                 ref op,

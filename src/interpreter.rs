@@ -1,5 +1,5 @@
 use std::string::String;
-use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::fmt::{Display, Error, Formatter, Result as FmtResult};
 use crate::ast::{Expr, Stmt, Visitor};
 use crate::parser::Parser;
 use crate::environment::Environment;
@@ -8,7 +8,7 @@ use crate::token::{Token, TokenType};
 //represents an Interpreter struct
 
 pub struct Interpreter {
-    environment: Environment
+    environment: Environment,
 }
 
 //
@@ -37,12 +37,34 @@ impl Interpreter {
         }
     }
 
+    fn execute_block(&mut self,statements: &Vec<Stmt>, env: Environment)  {
+        let previous =self.environment.clone();
+        let steps = || -> Result<(), Error>{
+            self.environment = env;
+            for statement in statements {
+                match self.visit_statement(&statement) {
+                    Ok(())=> (),
+                    Err(value) => panic!("{}",value.clone()),
+                }
+            }
+            Ok(())
+        };
+        let result = steps();
+        self.environment = previous;
+        result.unwrap()
+
+    }
+
 }
 impl Visitor for Interpreter {
     type E = Result<Types, String>;
     type S = Result<(), String>;
     fn visit_statement(&mut self, s: &Stmt) -> Self::S {
         match s {
+            &Stmt::Block( ref stmts) => {
+                self.execute_block(stmts, Environment::from(self.environment.clone()));
+                Ok(())
+            },
             &Stmt::Expr(ref Expr) => {
                 self.visit_expression(Expr).unwrap();
                 Ok(())
@@ -451,6 +473,103 @@ mod tests {
         // Verify that the value of y is equal to 10 (x + x)
         let value_of_y = interpreter.environment.get(String::from("y")).unwrap().unwrap();
         assert_eq!(value_of_y, Types::Number(10.0));
+    }
+
+    #[test]
+    fn test_block_statements() {
+        // Define tokens representing a block of code: { var x = 5; var y = x + 10; }
+        let tokens = vec![
+            Token {
+                t_type: TokenType::LeftBrace,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Var,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Identifier(String::from("x")),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Equal,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Number(5.0),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::SemiColon,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Var,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Identifier(String::from("y")),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Equal,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Identifier(String::from("x")),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Plus,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Number(10.0),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::SemiColon,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::RightBrace,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::EOF,
+                lexeme: String::new(),
+                line: 0,
+            },
+        ];
+
+        // Create the parser and parse the tokens into statements
+        let mut parser = Parser::new(tokens);
+        let statements = parser.parse();
+
+        // Create the interpreter and interpret the statements
+        let mut interpreter = Interpreter::new();
+        interpreter.interpret(statements.clone());
+
+        // Verify the values of x and y after executing the block
+        let value_of_x = interpreter.environment.get(String::from("x")).unwrap().unwrap();
+        let value_of_y = interpreter.environment.get(String::from("y")).unwrap().unwrap();
+
+        assert_eq!(value_of_x, Types::Number(5.0));
+        assert_eq!(value_of_y, Types::Number(15.0)); // y = x + 10
     }
 
 

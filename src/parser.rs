@@ -67,7 +67,12 @@ impl Parser {
                 self.advance();
                 self.print_statement()
             },
-            _ => self.expression_statement()
+            TokenType::LeftBrace => {
+                self.advance();
+                Stmt::Block(self.block_statement())
+            },
+            _=> self.expression_statement()
+
         }
     }
 
@@ -81,6 +86,18 @@ impl Parser {
         let expr = self.expression();
         self.consume(TokenType::SemiColon, "Expect ';' after value.").unwrap();
         Stmt::Expr(expr)
+    }
+
+    fn block_statement(&mut self) -> Vec<Stmt> {
+        let mut statements: Vec<Stmt> = Vec::new();
+        while match self.peek().unwrap().t_type.clone() {
+            TokenType::RightBrace | TokenType::EOF=> false,
+            _ => true,
+        }{
+            statements.push(self.declaration())
+        }
+        self.consume(TokenType::RightBrace, "Expect '}' after block.").unwrap();
+        return  statements
     }
     //using recursive decent parsing method
     fn expression(&mut self) -> Expr {
@@ -192,7 +209,7 @@ impl Parser {
     }
     // returns a literal such as String, bool, Number and also grouping expression
     fn primary(&mut self) -> Expr {
-        dbg!(&self.peek().unwrap());
+        // dbg!(&self.peek().unwrap());
         let previous_token = self.peek().unwrap().clone();
 
         let expr =  match previous_token.t_type {
@@ -243,13 +260,9 @@ impl Parser {
         }
     }
 
-
-
-
     //return the current value or current token based on the index
     fn peek(&self) -> Option<&Token>  {
         let index = self.current;
-
         if index >= self.tokens.len(){
             None
         }else{
@@ -484,4 +497,179 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_block_statement_with_variables() {
+        // Define tokens representing the block statement: var x = 5; { x=10; var y = 10; print x; }
+        let tokens = vec![
+            // Variable declaration: var x = 5;
+            Token {
+                t_type: TokenType::Var,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Identifier(String::from("x")),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Equal,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Number(5.0),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::SemiColon,
+                lexeme: String::new(),
+                line: 0,
+            },
+            // Block start
+            Token {
+                t_type: TokenType::LeftBrace,
+                lexeme: String::new(),
+                line: 0,
+            },
+            // Assignment: x=10;
+            Token {
+                t_type: TokenType::Identifier(String::from("x")),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Equal,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Number(10.0),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::SemiColon,
+                lexeme: String::new(),
+                line: 0,
+            },
+            // Variable declaration: var y = 10;
+            Token {
+                t_type: TokenType::Var,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Identifier(String::from("y")),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Equal,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Number(10.0),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::SemiColon,
+                lexeme: String::new(),
+                line: 0,
+            },
+            // Print statement: print x;
+            Token {
+                t_type: TokenType::Print,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Identifier(String::from("x")),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::SemiColon,
+                lexeme: String::new(),
+                line: 0,
+            },
+            // Block end
+            Token {
+                t_type: TokenType::RightBrace,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::EOF,
+                lexeme: String::new(),
+                line: 0,
+            },
+        ];
+
+        // Create the parser and parse the tokens into statements
+        let mut parser = Parser::new(tokens);
+        let statements = parser.parse();
+
+        // Validate the output
+        dbg!(statements.clone());
+        assert_eq!(
+            statements,
+            vec![
+                Stmt::VarDeclaration(
+                    Token {
+                        t_type: TokenType::Identifier(String::from("x")),
+                        lexeme: String::new(),
+                        line: 0,
+                    },
+                    Some(Expr::Literal {
+                        token: Token {
+                            t_type: TokenType::Number(5.0),
+                            lexeme: String::new(),
+                            line: 0,
+                        },
+                    })
+                ),
+                Stmt::Block(vec![
+                    Stmt::Expr(Expr::Assign {
+                        name: Token {
+                            t_type: TokenType::Identifier(String::from("x")),
+                            lexeme: String::new(),
+                            line: 0,
+                        },
+                        value: Box::new(Expr::Literal {
+                            token: Token {
+                                t_type: TokenType::Number(10.0),
+                                lexeme: String::new(),
+                                line: 0,
+                            },
+                        }),
+                    }),
+                    Stmt::VarDeclaration(
+                        Token {
+                            t_type: TokenType::Identifier(String::from("y")),
+                            lexeme: String::new(),
+                            line: 0,
+                        },
+                        Some(Expr::Literal {
+                            token: Token {
+                                t_type: TokenType::Number(10.0),
+                                lexeme: String::new(),
+                                line: 0,
+                            },
+                        })
+                    ),
+                    Stmt::Print(Expr::Variable {
+                        name: Token {
+                            t_type: TokenType::Identifier(String::from("x")),
+                            lexeme: String::new(),
+                            line: 0,
+                        },
+                    }),
+                ]),
+            ]
+        );
+    }
 }

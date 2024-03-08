@@ -1,7 +1,7 @@
 use std::fmt::format;
 use crate::ast::*;
 use crate::token::{Token, TokenType};
-
+// use crate::token::TokenType::String;
 
 
 //Ast Printer is used to print out the AST tree structure
@@ -60,6 +60,7 @@ impl Visitor for AstPrinter {
 
     fn visit_statement(&mut self, s: &Stmt) -> Self::S {
         match *s {
+            Stmt::Block(ref statements) => format!("(Block Statement {:?})", statements.iter().map(|x| self.visit_statement(s)).collect::<String>()),
             Stmt::Expr(ref expr) => format!("(Expression Statement {})", self.visit_expression(expr)),
             Stmt::Print(ref expr) => format!("Print Statement {}", self.visit_expression(expr).as_str()),
             Stmt::VarDeclaration(ref token, ref expr_opt) => format!("Variable Declaration {:?} {:?}", token,

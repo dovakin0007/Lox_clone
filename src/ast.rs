@@ -40,6 +40,7 @@ pub enum Expr {
 }
 #[derive(Debug, PartialEq, Clone)]
 pub enum Stmt {
+    Block(Vec<Stmt>),
     Expr(Expr),
     Print(Expr),
     VarDeclaration(Token, Option<Expr>)

@@ -5,13 +5,26 @@ use crate::interpreter::Types;
 use crate::token;
 use crate::token::{Token, TokenType};
 
+
+type Env = Rc<RefCell<HashMap<String, Option<Types>>>>;
+
+#[derive(Clone, Debug)]
 pub struct Environment{
+    enclosing: Option<Box<Environment>>,
     values: Rc<RefCell<HashMap<String, Option<Types>>>>
 }
 
 impl Environment{
     pub fn new() -> Self {
         Self{
+            enclosing: None,
+            values: Rc::new(RefCell::new(HashMap::new()))
+        }
+    }
+
+    pub fn from(enclosing: Environment) -> Self {
+        Self {
+            enclosing: Some(Box::new(enclosing)),
             values: Rc::new(RefCell::new(HashMap::new()))
         }
     }
@@ -24,7 +37,14 @@ impl Environment{
         if self.values.borrow().contains_key(&name.clone()) == true{
             Ok(self.values.borrow_mut().get_mut(&name).cloned().unwrap())
         }else {
-            Err(format!(" Undefined variable {name}"))
+
+            if let Some(ref mut enclosing) = self.enclosing {
+                enclosing.get(name.clone())
+            }
+            else {
+                Err(format!(" Undefined variable {name}"))
+            }
+
         }
     }
 
@@ -37,6 +57,10 @@ impl Environment{
             self.values.borrow_mut().insert(ident_name.clone().unwrap(), Option::from(value.clone()));
             Ok(())
         }else {
+
+            if let Some(ref mut enclosing)= self.enclosing{
+                enclosing.assign(name, value)?
+            }
             Err(format!(" Undefined variable {name}"))
         }
     }

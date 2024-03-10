@@ -1,8 +1,10 @@
 use std::string::String;
-use std::fmt::{Display, Error, Formatter, Result as FmtResult};
+use std::fmt::{Display, Formatter, Result as FmtResult};
 use crate::ast::{Expr, Stmt, Visitor};
 use crate::parser::Parser;
+use crate::error::{Error, error};
 use crate::environment::Environment;
+use crate::error::Error::InvalidStmt;
 use crate::token::{Token, TokenType};
 
 //represents an Interpreter struct
@@ -21,10 +23,11 @@ impl Interpreter {
     }
 
     // for now it returns Executed types
-    pub fn interpret(&mut self, statement: Vec<Stmt>)  {
+    pub fn interpret(&mut self, statement: Vec<Stmt>) -> Result<(), Error>  {
         for x in statement {
-            self.visit_statement(&x).unwrap();
+            self.visit_statement(&x)?;
         }
+        Ok(())
     }
 
     fn stringify(&self, types: Types) -> String {
@@ -37,40 +40,39 @@ impl Interpreter {
         }
     }
 
-    fn execute_block(&mut self,statements: &Vec<Stmt>, env: Environment)  {
+    fn execute_block(&mut self,statements: &Vec<Stmt>, env: Environment) -> Result<(), Error>  {
         let previous =self.environment.clone();
         let steps = || -> Result<(), Error>{
             self.environment = env;
             for statement in statements {
-                match self.visit_statement(&statement) {
-                    Ok(())=> (),
-                    Err(value) => panic!("{}",value.clone()),
-                }
+                self.visit_statement(&statement)?
+
             }
             Ok(())
         };
         let result = steps();
         self.environment = previous;
-        result.unwrap()
+        result.unwrap();
+        Ok(())
 
     }
 
 }
 impl Visitor for Interpreter {
-    type E = Result<Types, String>;
-    type S = Result<(), String>;
+    type E = Result<Types, Error>;
+    type S = Result<(), Error>;
     fn visit_statement(&mut self, s: &Stmt) -> Self::S {
         match s {
             &Stmt::Block( ref stmts) => {
-                self.execute_block(stmts, Environment::from(self.environment.clone()));
+                self.execute_block(stmts, Environment::from(self.environment.clone()))?;
                 Ok(())
             },
             &Stmt::Expr(ref Expr) => {
-                self.visit_expression(Expr).unwrap();
+                self.visit_expression(Expr)?;
                 Ok(())
             },
             Stmt::Print(Expr)=> {
-                let e =self.visit_expression(Expr).unwrap();
+                let e =self.visit_expression(Expr)?;
                 println!("{}", self.stringify(e));
                 Ok(())
             },
@@ -81,7 +83,7 @@ impl Visitor for Interpreter {
                             TokenType::Identifier(x) => x,
                             _ => String::from(""),
                         };
-                        let result =  self.visit_expression(&e).unwrap();
+                        let result =  self.visit_expression(&e)?;
                         Ok(self.environment.define(var_name, Some(result)))
 
                     }
@@ -94,7 +96,8 @@ impl Visitor for Interpreter {
 
                     }
                 }
-            }
+            },
+            _ => Err(InvalidStmt)
         }
     }
 
@@ -127,7 +130,7 @@ impl Visitor for Interpreter {
                     // For Strings
                     (Types::ReturnString(ls), t, Types::ReturnString(rs)) => match t.t_type.clone() {
                         TokenType::Plus => Ok(Types::ReturnString(String::from(format!("{}{}", ls, rs)))),
-                        _ => Err(String::from(format!("cannot be appended to string {}", t.line.clone())))
+                        _ => Err(Error::RunTime { token: t.clone(), message: "Operands must be two numbers or two strings".to_string() })
                     },
                     //For number basic operation and comparison
                     (Types::Number(ln), t, Types::Number(rn)) => match t.t_type {
@@ -135,7 +138,7 @@ impl Visitor for Interpreter {
                         TokenType::Minus => Ok(Types::Number(ln - rn)),
                         TokenType::Star => Ok(Types::Number(ln - rn)),
                         TokenType::Slash => if rn == 0.0 {
-                            Err(String::from(format!("cannot be divided by zero at {}", t.line.clone())))
+                            Err(Error::RunTime { token: t.clone(), message: "Operands must be two numbers or two strings".to_string() })
                         } else {
                             Ok(Types::Number(ln / rn))
                         },
@@ -145,21 +148,21 @@ impl Visitor for Interpreter {
                         TokenType::LessEqual => Ok(Types::Boolean(ln <= rn)),
                         TokenType::EqualEqual => Ok(Types::Boolean(ln == rn)),
                         TokenType::BangEqual => Ok(Types::Boolean(ln != rn)),
-                        _ => Err(String::from(format!("Invalid Expression type at line {}", t.line.clone())))
+                        _ => Err(Error::RunTime { token: t.clone(), message: "Operands must be two numbers to compare".to_string() })
                     },
                     //For Type Nil
                     (Types::Nil, t, Types::Nil) => match t.t_type {
                         TokenType::Equal => Ok(Types::Boolean(true)),
                         TokenType::BangEqual => Ok(Types::Boolean(false)),
-                        _ => Err(String::from(format!("cannot be divided by zero at {}", t.line.clone())))
+                        _ => Err(Error::RunTime { token: t.clone(), message: "Operands must be nil ".to_string() })
                     }
                     //For Type boolean
                     (Types::Boolean(lb), t, Types::Boolean(rb)) => match t.t_type {
                         TokenType::Equal => Ok(Types::Boolean(lb == rb)),
                         TokenType::BangEqual => Ok(Types::Boolean(lb != rb)),
-                        _ => Err(String::from(format!("Invalid Expression type at line {}", t.line.clone())))
+                        _ => Err(Error::RunTime { token: t.clone(), message: "Operands must be boolean".to_string() })
                     },
-                    _ => Err(String::from("Invalid ask Ivan for fix")),
+                    _ => Err(Error::RunTime { token: op.clone(), message: "Idk what to print".to_string() }),
                 }
             },
             //For Grouping Expression
@@ -175,7 +178,7 @@ impl Visitor for Interpreter {
                 TokenType::False => Ok(Types::Boolean(false)),
                 TokenType::Nil => Ok(Types::Nil),
                 TokenType::String(s) => Ok(Types::ReturnString(s.clone())),
-                _ => Err(String::from(format!("Invalid type at line {}", token.line.clone())))
+                _ => Err(Error::RunTime { token: token.clone(), message: "That's not a literal".to_string() })
             },
 
             // returns an unary expression
@@ -193,7 +196,7 @@ impl Visitor for Interpreter {
                     },
                     // return false for any value idk whether it does for Zero lol
                     (_, TokenType::Bang) => Ok(Types::Boolean(false)),
-                    _ => Err(String::from(format!("Invalid type at line {}", op.line.clone())))
+                    _ => Err(Error::RunTime { token: op.clone(), message: "Invalid unary Expression".to_string() })
                 }
             },
             &Expr::Variable {
@@ -203,7 +206,7 @@ impl Visitor for Interpreter {
                     TokenType::Identifier(x) => x,
                     _ => String::from("")
                 };
-                match self.environment.get(name).unwrap() {
+                match self.environment.get(name)? {
                     Some(v) => Ok(v),
                     None => Ok(Types::Nil)
                 }
@@ -282,12 +285,12 @@ mod tests {
 
         // Create the interpreter and interpret the statements
         let mut interpreter = Interpreter::new();
-        interpreter.interpret(statements.clone());
+        interpreter.interpret(statements.unwrap()).unwrap();
 
         // Print the executed statements for debugging
-        for stmt in statements {
-            println!("Executed statement: {:?}", stmt);
-        }
+        // for stmt in statements {
+        //     println!("Executed statement: {:?}", stmt);
+        // }
     }
 
     #[test]
@@ -359,12 +362,10 @@ mod tests {
 
         // Create the interpreter and interpret the statements
         let mut interpreter = Interpreter::new();
-        interpreter.interpret(statements.clone());
+        interpreter.interpret(statements.unwrap()).unwrap();
 
         // Print the executed statements for debugging
-        for stmt in statements {
-            println!("Executed statement: {:?}", stmt);
-        }
+
     }
 
     #[test]
@@ -562,7 +563,7 @@ mod tests {
 
         // Create the interpreter and interpret the statements
         let mut interpreter = Interpreter::new();
-        interpreter.interpret(statements.clone());
+        let _ = interpreter.interpret(statements.unwrap().clone());
 
         // Verify the values of x and y after executing the block
         let value_of_x = interpreter.environment.get(String::from("x")).unwrap().unwrap();

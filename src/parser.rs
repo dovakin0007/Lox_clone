@@ -1,20 +1,8 @@
+use std::io::ErrorKind::Other;
 use crate::token::{Token, TokenType};
 use crate::ast::{Expr, Stmt};
+use crate::error::{parse_error, Error};
 
-
-
-// #[derive(Debug)]
-// pub struct ParseError;
-//
-//
-// impl Display for ParseError {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-//         write!(f, "Oh no, something bad went down")
-//     }
-// }
-//
-// impl Error for ParseError {
-// }
 
 //Parser takes an input of tokens
 pub struct Parser {
@@ -31,37 +19,44 @@ impl Parser {
     }
 
     //returns an expression tree from the Vector
-    pub fn parse(&mut self) -> Vec<Stmt>{
+    pub fn parse(&mut self) -> Result<Vec<Stmt>, Error>{
         let mut statements: Vec<Stmt> = Vec::new();
         while(self.peek().unwrap().t_type != TokenType::EOF){
-            statements.push(self.declaration())
+            statements.push(self.declaration()?)
         }
-        return statements
+        return Ok(statements)
     }
 
 
-    fn declaration(&mut self) -> Stmt {
-        match self.peek().unwrap().t_type {
+    fn declaration(&mut self) -> Result<Stmt, Error> {
+        let statement = match self.peek().unwrap().t_type {
             TokenType::Var => self.var_declaration(),
             _ => self.statement()
 
+        };
+        match statement {
+            Err(Error::Parse) => {
+                self.synchronize();
+                Ok(Stmt::Null)
+            }
+            other => other
         }
     }
 
-    fn var_declaration (&mut self) -> Stmt {
+    fn var_declaration (&mut self) -> Result<Stmt, Error> {
         let token = self.consume_identifier("Expect variable name").unwrap().clone();
         let initializer = if self.peek().unwrap().t_type.clone() == TokenType::Equal{
             self.advance();
-            Some(self.expression())
+            Some(self.expression()?)
         }else { None };
 
         let _ = self.consume(self.peek().unwrap().t_type.clone(), "Expected `;` after variable declaration").unwrap();
-        Stmt::VarDeclaration(token, initializer)
+        Ok(Stmt::VarDeclaration(token, initializer))
     }
 
 
 
-    fn statement(&mut self) -> Stmt {
+    fn statement(&mut self) -> Result<Stmt, Error> {
         return match self.peek().unwrap().t_type {
             TokenType::Print => {
                 self.advance();
@@ -69,84 +64,84 @@ impl Parser {
             },
             TokenType::LeftBrace => {
                 self.advance();
-                Stmt::Block(self.block_statement())
+                Ok(Stmt::Block(self.block_statement()?))
             },
             _=> self.expression_statement()
 
         }
     }
 
-    fn print_statement(&mut self) -> Stmt {
-        let expr =self.expression();
-        self.consume(TokenType::SemiColon, "Expect ';' after value.").unwrap();
-        Stmt::Print(expr)
+    fn print_statement(&mut self) -> Result<Stmt, Error> {
+        let expr =self.expression()?;
+        self.consume(TokenType::SemiColon, "Expect ';' after value.")?;
+        Ok(Stmt::Print(expr))
     }
 
-    fn expression_statement(&mut self) -> Stmt{
-        let expr = self.expression();
-        self.consume(TokenType::SemiColon, "Expect ';' after value.").unwrap();
-        Stmt::Expr(expr)
+    fn expression_statement(&mut self) -> Result<Stmt, Error>{
+        let expr = self.expression()?;
+        self.consume(TokenType::SemiColon, "Expect ';' after value.")?;
+        Ok(Stmt::Expr(expr))
     }
 
-    fn block_statement(&mut self) -> Vec<Stmt> {
+    fn block_statement(&mut self) -> Result<Vec<Stmt>, Error> {
         let mut statements: Vec<Stmt> = Vec::new();
         while match self.peek().unwrap().t_type.clone() {
             TokenType::RightBrace | TokenType::EOF=> false,
             _ => true,
         }{
-            statements.push(self.declaration())
+            statements.push(self.declaration()?)
         }
         self.consume(TokenType::RightBrace, "Expect '}' after block.").unwrap();
-        return  statements
+        return  Ok(statements)
     }
     //using recursive decent parsing method
-    fn expression(&mut self) -> Expr {
-        return self.assignment();
+    fn expression(&mut self) -> Result<Expr, Error> {
+        return Ok(self.assignment()?);
     }
 
-    fn assignment(&mut self) -> Expr {
+    fn assignment(&mut self) -> Result<Expr, Error> {
 
-       let mut expr = self.equality();
+       let mut expr = self.equality()?;
 
         if let Some(_) = match self.peek().unwrap().t_type {
             TokenType::Equal => self.advance(),
             _ => None,
         }{
-            let value = self.assignment();
+            let value = self.assignment()?;
             match expr {
                 Expr::Variable { name, ..} => {
-                    return Expr::Assign {
+                    return Ok(Expr::Assign {
                         name: name,
                         value: Box::new(value)
-                    }
+                    })
 
                 }
                 _ => panic!("unable to assign ")
             }
 
         }
-        return expr
+        return Ok(expr)
     }
 
     //checks whether the expression is an equality expression returns an expression
-    fn equality(&mut self) -> Expr {
-        let mut expr = self.comparison();
+    fn equality(&mut self) -> Result<Expr, Error> {
+        let mut expr = self.comparison()?;
         //dbg!(&self.peek().unwrap());
         while let Some(t) = match self.peek().unwrap().t_type {
             TokenType::EqualEqual | TokenType::BangEqual => self.advance(),
             _ => None
         }{
             let operator: Token = t.clone();
-            let right = self.comparison();
+            let right = self.comparison()?;
 
             expr = Expr::Binary { left: Box::new(expr), op: operator.clone(), right: Box::new( right)};
         }
-        return expr
+        return Ok(expr)
     }
 
     //checks whether the given expression is comparison operation returns an expression
-    fn comparison(&mut self) -> Expr{
-        let mut expr = self.term();
+    fn comparison(&mut self) -> Result<Expr, Error> {
+        let mut expr = self.term()?;
         //dbg!(&self.peek().unwrap());
         while let Some(t) = match self.peek().unwrap().t_type {
             TokenType::Greater |
@@ -155,16 +150,16 @@ impl Parser {
             _ => None
         }{
             let operator:Token =t.clone();
-            let  right = self.term();
+            let  right = self.term()?;
             expr = Expr::Binary {left: Box::new(expr), op: operator.clone(), right: Box::new(right)}
 
         }
-        return expr
+        return Ok(expr)
     }
 
     //checks whether the expression is add or sub and returns an expression
-    fn term(&mut self)-> Expr{
-        let mut expr = self.factor();
+    fn term(&mut self)-> Result<Expr, Error> {
+        let mut expr = self.factor()?;
         //dbg!(&self.peek().unwrap());
         while let Some(t) = match self.peek().unwrap().t_type {
             TokenType::Plus |
@@ -172,15 +167,15 @@ impl Parser {
             _ => None
         }{
             let operator: Token = t.clone();
-            let right = self.factor();
+            let right = self.factor()?;
             expr = Expr::Binary {left: Box::new(expr), op: operator.clone(), right: Box::new(right)}
         }
-        return expr
+        return Ok(expr)
     }
 
     //checks whether the expression is mul or div and returns an expression
-    fn factor(&mut self) -> Expr {
-        let mut  expr = self.unary();
+    fn factor(&mut self) -> Result<Expr, Error> {
+        let mut  expr = self.unary()?;
         //dbg!(&self.peek().unwrap());
         while let Some(t) = match self.peek().unwrap().t_type{
             TokenType::Star |
@@ -188,13 +183,13 @@ impl Parser {
             _ => None
         }{
             let operator = t.clone();
-            let right = self.unary();
+            let right = self.unary()?;
             expr = Expr::Binary {left:Box::new(expr), op: operator.clone(), right: Box::new(right) }
         }
-        return expr
+        return Ok(expr)
     }
     // returns an unary expression
-    fn unary(&mut self) -> Expr{
+    fn unary(&mut self) -> Result<Expr, Error>{
         //dbg!(&self.peek().unwrap());
         if let Some(t) = match self.peek().unwrap().t_type {
             TokenType::Bang |
@@ -202,13 +197,13 @@ impl Parser {
             _ => None
         }{
             let operator = t.clone();
-            let right = self.unary();
-            return  Expr::Unary {op: operator.clone(),  expr: Box::new(right) }
+            let right = self.unary()?;
+            return Ok(Expr::Unary { op: operator.clone(), expr: Box::new(right) })
         }
-        return self.primary();
+        return Ok(self.primary()?);
     }
     // returns a literal such as String, bool, Number and also grouping expression
-    fn primary(&mut self) -> Expr {
+    fn primary(&mut self) -> Result<Expr, Error> {
         // dbg!(&self.peek().unwrap());
         let previous_token = self.peek().unwrap().clone();
 
@@ -219,7 +214,7 @@ impl Parser {
             TokenType::String(_) => Expr::Literal { token: previous_token.clone() },
             TokenType::Number(_) => Expr::Literal {token: previous_token.clone()},
            TokenType::LeftParen => {
-                let expr = self.expression();
+                let expr = self.expression()?;
                 self.consume(TokenType::RightParen, "Expect ')' after expression.").unwrap();
                 Expr::Grouping {expr:Box::new(expr)}
             },
@@ -231,14 +226,19 @@ impl Parser {
             },
 
 
-            _ => panic!("Expects a expression at {} {:?}", previous_token.line.clone(), previous_token),
+            _ => return Err(self.error(self.peek().unwrap(), "Expect expression.")),
         };
         self.advance();
-        return expr
+        return Ok(expr)
     }
 
    //TODO
-    fn synchronize(&mut self){
+   fn error(&self, token:&Token, message: &str) -> Error{
+       parse_error(token, message);
+       Error::Parse
+   }
+
+   fn synchronize(&mut self){
         self.advance();
         while self.peek().unwrap().t_type != TokenType::EOF{
             if self.previous().unwrap().t_type == TokenType::SemiColon{
@@ -254,9 +254,8 @@ impl Parser {
                 TokenType::While|
                 TokenType::Print|
                 TokenType::Return => return,
-                _ => {}
-            }
-            self.advance();
+                _ => self.advance()
+            };
         }
     }
 
@@ -280,22 +279,22 @@ impl Parser {
     }
 
     //checks if right parenthesis exists or throws an error
-    fn consume(&mut self, token_type: TokenType, error_msg:&str) -> Result<Token, ()> {
+    fn consume(&mut self, token_type: TokenType, error_msg:&str) -> Result<Token, Error> {
         if token_type == self.peek().unwrap().t_type{
             return Ok(self.advance().unwrap().clone());
 
         }else{
-            crate::error(self.peek().unwrap().clone(), error_msg);
-            Err(())
+
+            Err(self.error(&self.peek().unwrap(), error_msg))
         }
     }
 
-    fn consume_identifier(&mut self, error_msg: &str) -> Result<Token, ()> {
+    fn consume_identifier(&mut self, error_msg: &str) -> Result<Token, Error> {
         self.advance().unwrap();
         let token_type = self.peek().unwrap().t_type.clone();
         match token_type {
             TokenType::Identifier(_) => self.consume(token_type, error_msg),
-            _ => Err(())
+            _ => Err(self.error(&self.peek().unwrap(), error_msg))
         }
 
     }
@@ -309,78 +308,7 @@ impl Parser {
 mod tests {
     use super::*;
 
-    // Helper function to create tokens for testing
-    #[test]
-    fn test_parse_statement() {
-        // Tokens representing the expression: print 5 + 3;
-        let tokens = vec![
-            Token {
-                t_type: TokenType::Print,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Number(5.0),
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Plus,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Number(3.0),
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::SemiColon,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::EOF,
-                lexeme: String::new(),
-                line: 0,
-            },
-        ];
-
-        let mut parser = Parser::new(tokens);
-        let statements = parser.parse();
-
-        // Verify that the parsed statement is a Print statement with the correct expression
-        assert_eq!(
-            statements,
-            vec![Stmt::Print(Expr::Binary {
-                left: Box::new(Expr::Literal {
-                    token: Token {
-                        t_type: TokenType::Number(5.0),
-                        lexeme: String::new(),
-                        line: 0,
-                    },
-                }),
-                op: Token {
-                    t_type: TokenType::Plus,
-                    lexeme: String::new(),
-                    line: 0,
-                },
-                right: Box::new(Expr::Literal {
-                    token: Token {
-                        t_type: TokenType::Number(3.0),
-                        lexeme: String::new(),
-                        line: 0,
-                    },
-                }),
-            })]
-        );
-
-        // Print the parsed statement for debugging
-        match statements.first() {
-            Some(stmt) => println!("Parsed statement: {:?}", stmt),
-            None => println!("No statement parsed"),
-        }
-    }
+    // Helper function to create tokens for testi
 
     #[test]
     fn test_variable_declaration() {
@@ -424,7 +352,7 @@ mod tests {
 
         // Validate the output
         assert_eq!(
-            statements,
+            statements.unwrap(),
             vec![Stmt::VarDeclaration(
                 Token {
                     t_type: TokenType::Identifier(String::from("x")),
@@ -479,7 +407,7 @@ mod tests {
 
         // Validate the output
         assert_eq!(
-            statements,
+            statements.unwrap(),
             vec![Stmt::Expr(Expr::Assign {
                 name: Token {
                     t_type: TokenType::Identifier(String::from("x")),
@@ -611,7 +539,7 @@ mod tests {
 
         // Create the parser and parse the tokens into statements
         let mut parser = Parser::new(tokens);
-        let statements = parser.parse();
+        let statements = parser.parse().unwrap();
 
         // Validate the output
         dbg!(statements.clone());

@@ -1,4 +1,4 @@
-
+use crate::error::error;
 use crate::report;
 use crate::token::TokenType;
 use crate::token::Token;
@@ -196,7 +196,7 @@ impl <'a> Scanner<'a> {
     //returns a substring or returns an error
     fn sub_string(&self, start: usize, current: usize) -> Result<String, ()> {
         return String::from_utf8(self.source[start..current].to_vec()).map_err(|_| {
-            report(self.line as u32, "at the ","Invalid Character");
+            error(self.line as u32, "Unexpected character.");
         })
     }
 
@@ -210,7 +210,7 @@ impl <'a> Scanner<'a> {
 
         }
         if self.at_end(){
-            report(self.line as u32, "at the", "Unterminated String");
+            error(self.line as u32, "Unterminated string");
             ()
         }
         self.advance();

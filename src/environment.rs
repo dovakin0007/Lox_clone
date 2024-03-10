@@ -1,6 +1,8 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use crate::error::Error;
+use crate::error::Error::RunTime;
 use crate::interpreter::Types;
 use crate::token;
 use crate::token::{Token, TokenType};
@@ -33,7 +35,7 @@ impl Environment{
         self.values.borrow_mut().insert(name, value);
     }
 
-    pub fn get(&mut self, name: String) -> Result<Option<Types>, String> {
+    pub fn get(&mut self, name: String) -> Result<Option<Types>, Error> {
         if self.values.borrow().contains_key(&name.clone()) == true{
             Ok(self.values.borrow_mut().get_mut(&name).cloned().unwrap())
         }else {
@@ -42,13 +44,20 @@ impl Environment{
                 enclosing.get(name.clone())
             }
             else {
-                Err(format!(" Undefined variable {name}"))
+                Err(Error::RunTime {
+                    token: Token {
+                        t_type: TokenType::Identifier(name.clone()),
+                        lexeme: name,
+                        line: 0,
+                    },
+                    message: "cannot get the value or hasn't been assigned yet".to_string(),
+                })
             }
 
         }
     }
 
-    pub fn assign(&mut self, name: &Token, value: &Types) -> Result<(), String> {
+    pub fn assign(&mut self, name: &Token, value: &Types) -> Result<(), Error> {
         let ident_name = match name.clone().t_type {
             TokenType::Identifier(s) => Some(s),
             _ => None
@@ -61,7 +70,11 @@ impl Environment{
             if let Some(ref mut enclosing)= self.enclosing{
                 enclosing.assign(name, value)?
             }
-            Err(format!(" Undefined variable {name}"))
+            Err(Error::RunTime {
+                token: name.clone(),
+                message: "cannot get the value or hasn't been assigned yet".to_string(),
+            })
+
         }
     }
 }

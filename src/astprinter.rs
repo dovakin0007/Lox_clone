@@ -67,8 +67,9 @@ impl Visitor for AstPrinter {
                                                                      match expr_opt {
                 &Some(ref expr) => self.visit_expression(expr),
                 &None => "nil".to_string(),
-            }
-            )
+            },
+            ),
+            Stmt::Null => unimplemented!()
         }
     }
 

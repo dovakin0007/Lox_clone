@@ -5,6 +5,7 @@ mod astprinter;
 mod parser;
 mod interpreter;
 mod environment;
+mod error;
 
 use std::{env, process, fs};
 use std::io::stdin;
@@ -102,7 +103,7 @@ pub fn run(token_stream : &[u8]){
     let tokens= scanner.scan_tokens();
 
     let mut  parser:Parser= Parser::new(tokens);
-    let expressions:Vec<Stmt> = parser.parse();
+    let expressions:Vec<Stmt> = parser.parse().unwrap();
     let mut interpreter = interpreter::Interpreter::new();
     interpreter.interpret(expressions);
 

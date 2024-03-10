@@ -43,6 +43,7 @@ pub enum Stmt {
     Block(Vec<Stmt>),
     Expr(Expr),
     Print(Expr),
-    VarDeclaration(Token, Option<Expr>)
+    VarDeclaration(Token, Option<Expr>),
+    Null,
 }
 

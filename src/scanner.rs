@@ -215,7 +215,6 @@ impl <'a> Scanner<'a> {
         }
         self.advance();
         let string = self.sub_string(self.start+1, self.current-1)?;
-        println!("{:?}", self.add_token(TokenType::String(string.clone())));
         Ok(Some(self.add_token(TokenType::String(string))))
     }
     //returns whether its a digit or not

@@ -1,9 +1,6 @@
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
-
-
-
     #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
     // Single-Char tokens

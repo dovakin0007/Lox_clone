@@ -3,6 +3,7 @@ use crate::token::{Token};
 
 //Visitor is a way to Traverse the Syntax tree and store it in a complex tree structure
 // there is much more robust way to write it but I went with something simple
+
 pub trait Visitor{
     type E;
     type S;
@@ -30,6 +31,11 @@ pub enum Expr {
     Literal {
         token: Token,
     },
+    Logical{
+        left: Box<Expr>,
+        op: Token,
+        right: Box<Expr>,
+    },
     Unary {
         op: Token,
         expr: Box<Expr>,
@@ -42,8 +48,10 @@ pub enum Expr {
 pub enum Stmt {
     Block(Vec<Stmt>),
     Expr(Expr),
+    IfStmt(Expr, Box<Stmt>, Option<Box<Stmt>>),
     Print(Expr),
     VarDeclaration(Token, Option<Expr>),
+    While(Expr, Box<Stmt>),
     Null,
 }
 

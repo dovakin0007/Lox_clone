@@ -1,9 +1,13 @@
 use std::io::ErrorKind::Other;
 use crate::token::{Token, TokenType};
 use crate::ast::{Expr, Stmt};
+use crate::ast::Expr::Literal;
+use crate::ast::Stmt::IfStmt;
 use crate::error::{parse_error, Error};
+use crate::interpreter::Types;
+use crate::token::TokenType::{False, LeftParen, RightParen, True};
 
-
+//TODO match macro
 //Parser takes an input of tokens
 pub struct Parser {
     tokens: Vec<Token>,
@@ -44,7 +48,7 @@ impl Parser {
     }
 
     fn var_declaration (&mut self) -> Result<Stmt, Error> {
-        let token = self.consume_identifier("Expect variable name").unwrap().clone();
+        let token = self.consume_identifier("Expect variable name")?.clone();
         let initializer = if self.peek().unwrap().t_type.clone() == TokenType::Equal{
             self.advance();
             Some(self.expression()?)
@@ -58,6 +62,18 @@ impl Parser {
 
     fn statement(&mut self) -> Result<Stmt, Error> {
         return match self.peek().unwrap().t_type {
+            TokenType::For => {
+                self.advance();
+                self.for_statement()
+            }
+            TokenType::If => {
+                self.advance();
+                self.if_statement()
+            },
+            TokenType::While => {
+                self.advance();
+                self.while_statement()
+            },
             TokenType::Print => {
                 self.advance();
                 self.print_statement()
@@ -69,6 +85,82 @@ impl Parser {
             _=> self.expression_statement()
 
         }
+    }
+
+
+    fn for_statement(&mut self) -> Result<Stmt, Error> {
+        self.consume(LeftParen, "Expect '(' after 'for'.")?;
+
+        let initializer = match self.peek().unwrap().t_type {
+            TokenType::Var => {
+                Some(self.var_declaration()?)
+            },
+            TokenType::SemiColon => None,
+            _ => Some(self.expression_statement()?)
+        };
+        let condition = if !self.check(TokenType::SemiColon) {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+        self.consume(TokenType::SemiColon, "Expect ';' after loop condition.")?;
+
+        let increment = if !self.check(TokenType::RightParen) {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+        self.consume(TokenType::RightParen, "Expect ')' after for clauses.")?;
+
+        let mut body = self.statement()?;
+
+        if let Some(inc) = increment {
+            let inc_stmt = Stmt::Expr(inc);
+            body = Stmt::Block(vec![body, inc_stmt])
+        };
+
+        body = Stmt::While(
+            condition.unwrap_or(Literal {
+                token: Token {
+                    t_type: True,
+                    lexeme: "".to_string(),
+                    line: self.peek().unwrap().line.clone(),
+                }
+            }),
+            Box::new(body)
+        );
+
+        if let Some(init_stmt) =  initializer {
+            body = Stmt::Block(
+            vec![init_stmt, body],
+            )
+        }
+        Ok(body)
+
+    }
+    fn if_statement(&mut self) -> Result<Stmt, Error> {
+        self.consume(LeftParen, "Expect '(' after 'if'.")?;
+        let expr = self.expression()?;
+        self.consume(RightParen, "Expect ')' after if condition.")?;
+        let then_stmt = self.statement()?;
+       match self.advance().unwrap().t_type.clone() {
+            TokenType::Else =>  {
+               let else_branch = self.statement()?;
+                return  Ok(IfStmt(expr, Box::new(then_stmt), Some(Box::new(else_branch))))
+            },
+            _ => return Ok(IfStmt(expr, Box::new(then_stmt), None)),
+        };
+
+    }
+
+    fn while_statement(&mut self) -> Result<Stmt, Error> {
+        self.consume(LeftParen, "Expect '(' after 'while'.")?;
+        let expr = self.expression()?;
+        self.consume(RightParen, "Expect ')' after 'while'.")?;
+
+        let body = self.statement()?;
+        Ok(Stmt::While(expr, Box::new(body)))
+
     }
 
     fn print_statement(&mut self) -> Result<Stmt, Error> {
@@ -101,7 +193,7 @@ impl Parser {
 
     fn assignment(&mut self) -> Result<Expr, Error> {
 
-       let mut expr = self.equality()?;
+       let mut expr = self.or()?;
 
         if let Some(_) = match self.peek().unwrap().t_type {
             TokenType::Equal => self.advance(),
@@ -121,6 +213,41 @@ impl Parser {
 
         }
         return Ok(expr)
+    }
+    fn or(&mut self) -> Result<Expr, Error>{
+        let mut expr = self.and()?;
+
+        while let Some(t) = match self.peek().unwrap().t_type {
+            TokenType::Or => self.advance(),
+            _ => None
+        }{
+            let operator = t.clone();
+            let right = self.and()?;
+            expr = Expr::Logical {
+                left: Box::new(expr),
+                op: operator,
+                right: Box::new(right.clone())
+            };
+        }
+        return Ok(expr);
+    }
+
+    fn and(&mut self) -> Result<Expr, Error>{
+        let mut expr = self.equality()?;
+        while let Some(t) = match self.peek().unwrap().t_type {
+            TokenType::And => self.advance(),
+            _ => None
+        }{
+            let op = t.clone();
+            let right = self.equality()?;
+
+            expr = Expr::Logical {
+                left: Box::new(expr),
+                op :op.clone(),
+                right: Box::new(right.clone())
+            };
+        }
+        return Ok(expr);
     }
 
     //checks whether the expression is an equality expression returns an expression
@@ -278,6 +405,13 @@ impl Parser {
         return self.tokens.get(self.current - 1)
     }
 
+    fn check(&mut self,token_type: TokenType) -> bool {
+        if self.peek().unwrap().t_type == TokenType::EOF{
+            return false;
+        }
+        token_type == self.peek().unwrap().t_type
+    }
+
     //checks if right parenthesis exists or throws an error
     fn consume(&mut self, token_type: TokenType, error_msg:&str) -> Result<Token, Error> {
         if token_type == self.peek().unwrap().t_type{
@@ -306,6 +440,7 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
+    use log::debug;
     use super::*;
 
     // Helper function to create tokens for testi
@@ -542,7 +677,7 @@ mod tests {
         let statements = parser.parse().unwrap();
 
         // Validate the output
-        dbg!(statements.clone());
+        // dbg!(statements.clone());
         assert_eq!(
             statements,
             vec![
@@ -598,6 +733,255 @@ mod tests {
                     }),
                 ]),
             ]
+        );
+    }
+    #[test]
+    fn test_if_else_statement() {
+        // Tokens representing the if-else statement: if (x == 5) { print "true"; } else { print "false"; }
+        let tokens = vec![
+            Token {
+                t_type: TokenType::If,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::LeftParen,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Identifier(String::from("x")),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::EqualEqual,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Number(5.0),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::RightParen,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::LeftBrace,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Print,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::String(String::from("true")),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::SemiColon,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::RightBrace,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Else,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::LeftBrace,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Print,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::String(String::from("false")),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::SemiColon,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::RightBrace,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::EOF,
+                lexeme: String::new(),
+                line: 0,
+            },
+        ];
+
+        // Create the parser and parse the tokens into statements
+        let mut parser = Parser::new(tokens);
+        let statements = parser.parse();
+
+        // Validate the output
+        assert_eq!(
+            statements.unwrap(),
+            vec![Stmt::IfStmt(
+                Expr::Binary {
+                    left: Box::new(Expr::Variable {
+                        name: Token {
+                            t_type: TokenType::Identifier(String::from("x")),
+                            lexeme: String::new(),
+                            line: 0,
+                        }
+                    }),
+                    op: Token {
+                        t_type: TokenType::EqualEqual,
+                        lexeme: String::new(),
+                        line: 0,
+                    },
+                    right: Box::new(Expr::Literal {
+                        token: Token {
+                            t_type: TokenType::Number(5.0),
+                            lexeme: String::new(),
+                            line: 0,
+                        }
+                    })
+                },
+                Box::new(Stmt::Block(vec![Stmt::Print(Expr::Literal {
+                    token: Token {
+                        t_type: TokenType::String(String::from("true")),
+                        lexeme: String::new(),
+                        line: 0,
+                    }
+                })])),
+                Some(Box::new(Stmt::Block(vec![Stmt::Print(Expr::Literal {
+                    token: Token {
+                        t_type: TokenType::String(String::from("false")),
+                        lexeme: String::new(),
+                        line: 0,
+                    }
+                })]))),
+            )]
+        );
+    }
+    #[test]
+    fn test_if_statement() {
+        // Tokens representing the if statement: if (x == 5) { print "true"; }
+        let tokens = vec![
+            Token {
+                t_type: TokenType::If,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::LeftParen,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Identifier(String::from("x")),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::EqualEqual,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Number(5.0),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::RightParen,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::LeftBrace,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Print,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::String(String::from("true")),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::SemiColon,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::RightBrace,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::EOF,
+                lexeme: String::new(),
+                line: 0,
+            },
+        ];
+
+        // Create the parser and parse the tokens into statements
+        let mut parser = Parser::new(tokens);
+        let statements = parser.parse();
+
+        //println!("{:?}", &statements.unwrap());
+        // Validate the output
+        assert_eq!(
+            statements.unwrap(),
+            vec![Stmt::IfStmt(
+                Expr::Binary {
+                    left: Box::new(Expr::Variable {
+                        name: Token {
+                            t_type: TokenType::Identifier(String::from("x")),
+                            lexeme: String::new(),
+                            line: 0,
+                        }
+                    }),
+                    op: Token {
+                        t_type: TokenType::EqualEqual,
+                        lexeme: String::new(),
+                        line: 0,
+                    },
+                    right: Box::new(Expr::Literal {
+                        token: Token {
+                            t_type: TokenType::Number(5.0),
+                            lexeme: String::new(),
+                            line: 0,
+                        }
+                    })
+                },
+                Box::new(Stmt::Block(vec![Stmt::Print(Expr::Literal {
+                    token: Token {
+                        t_type: TokenType::String(String::from("true")),
+                        lexeme: String::new(),
+                        line: 0,
+                    }
+                })])),
+                None,
+            )]
         );
     }
 }

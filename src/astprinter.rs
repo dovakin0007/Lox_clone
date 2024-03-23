@@ -1,4 +1,5 @@
 use std::fmt::format;
+use std::ops::Deref;
 use crate::ast::*;
 use crate::token::{Token, TokenType};
 // use crate::token::TokenType::String;
@@ -31,7 +32,8 @@ impl Visitor for AstPrinter {
                 ref value
             } => {
                 format!("Assignment {:?} {:?}", name, self.visit_expression(value))
-            },
+            }
+            ,
             Expr::Binary {
                 ref left,
                 ref op,
@@ -46,6 +48,15 @@ impl Visitor for AstPrinter {
                 ref token,
                 ..
             } =>format!("Literal {:?}", token),
+            Expr::Logical {
+                ref left,
+                ref op,
+                ref right,
+                ..
+            }=> {
+                format!("Logical {:?} {:?} {:?}",op, self.visit_expression(left), self.visit_expression(right))
+            }
+            ,
             Expr::Unary {
                 ref op,
                 ref expr,
@@ -59,16 +70,28 @@ impl Visitor for AstPrinter {
     }
 
     fn visit_statement(&mut self, s: &Stmt) -> Self::S {
-        match *s {
+        match s {
             Stmt::Block(ref statements) => format!("(Block Statement {:?})", statements.iter().map(|x| self.visit_statement(s)).collect::<String>()),
             Stmt::Expr(ref expr) => format!("(Expression Statement {})", self.visit_expression(expr)),
+            Stmt::IfStmt(ref expr, ref then_stmt ,ref else_stmt ) => {
+                format!("(If Statement {:?}, {:?},{:?}", self.visit_expression(expr), self.visit_statement(then_stmt),
+                        match else_stmt {
+                    &Some(ref stmt) => self.visit_statement(stmt),
+                    &None => String::from(""),
+                    }
+                )
+            }
             Stmt::Print(ref expr) => format!("Print Statement {}", self.visit_expression(expr).as_str()),
+
             Stmt::VarDeclaration(ref token, ref expr_opt) => format!("Variable Declaration {:?} {:?}", token,
                                                                      match expr_opt {
                 &Some(ref expr) => self.visit_expression(expr),
                 &None => "nil".to_string(),
             },
             ),
+            Stmt::While(ref expr, ref stmt) => format!("While Statement {:?} {:?}", self.visit_expression(expr), self.visit_statement(stmt)),
+
+
             Stmt::Null => unimplemented!()
         }
     }

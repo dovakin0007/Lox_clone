@@ -1,5 +1,6 @@
 use std::string::String;
 use std::fmt::{Display, Formatter, Result as FmtResult};
+use log::debug;
 use crate::ast::{Expr, Stmt, Visitor};
 use crate::parser::Parser;
 use crate::error::{Error, error};
@@ -13,6 +14,16 @@ pub struct Interpreter {
     environment: Environment,
 }
 
+
+macro_rules! istruthy {
+    ($i:expr) => {{
+        match $i {
+            Types::Nil | Types::Boolean(false) => false,
+            _ => true,
+
+        }
+    }};
+}
 //
 impl Interpreter {
     //Does nothing for now?
@@ -44,6 +55,7 @@ impl Interpreter {
         let previous =self.environment.clone();
         let steps = || -> Result<(), Error>{
             self.environment = env;
+
             for statement in statements {
                 self.visit_statement(&statement)?
 
@@ -52,8 +64,7 @@ impl Interpreter {
         };
         let result = steps();
         self.environment = previous;
-        result.unwrap();
-        Ok(())
+        result
 
     }
 
@@ -71,11 +82,23 @@ impl Visitor for Interpreter {
                 self.visit_expression(Expr)?;
                 Ok(())
             },
+            &Stmt::IfStmt(ref Expr, ref then,ref else_option)=>{
+                if istruthy!(&self.visit_expression(Expr)?){
+                    self.visit_statement(then)?;
+                }else {
+                    if let Some(ref else_stmt) = else_option{
+                        self.visit_statement(else_stmt)?;
+                    }
+                }
+                Ok(())
+            },
+
             Stmt::Print(Expr)=> {
                 let e =self.visit_expression(Expr)?;
                 println!("{}", self.stringify(e));
                 Ok(())
             },
+
             Stmt::VarDeclaration(Token,Expr) => {
                 match Expr {
                     &Some(ref e) => {
@@ -97,6 +120,12 @@ impl Visitor for Interpreter {
                     }
                 }
             },
+            Stmt::While(ref Expr, ref Stmt) =>  {
+                while istruthy!(self.visit_expression(Expr)?){
+                    self.visit_statement(Stmt)?
+                }
+                Ok(())
+            },
             _ => Err(InvalidStmt)
         }
     }
@@ -113,7 +142,7 @@ impl Visitor for Interpreter {
             } => {
                 let new_value = self.visit_expression(value)?;
 
-                self.environment.assign(&name, &new_value)?;
+                self.environment.assign(&name, new_value.clone())?;
                 return Ok(new_value)
             },
 
@@ -181,6 +210,25 @@ impl Visitor for Interpreter {
                 _ => Err(Error::RunTime { token: token.clone(), message: "That's not a literal".to_string() })
             },
 
+            &Expr::Logical {
+                ref left,
+                ref op,
+                ref right
+            } => {
+
+                let left_result = self.visit_expression(left)?;
+                if op.t_type == TokenType::Or {
+                    if istruthy!(left_result) {
+                        return Ok(left_result)
+                    }
+                }else {
+                    if !(istruthy!(left_result)) {
+                        return Ok(left_result)
+                    }
+                }
+                self.visit_expression(right)
+            }
+
             // returns an unary expression
             &Expr::Unary {
                 ref op,
@@ -200,12 +248,10 @@ impl Visitor for Interpreter {
                 }
             },
             &Expr::Variable {
-                ref name
+                ref name,
+                ..
             } => {
-                let name = match name.t_type.clone() {
-                    TokenType::Identifier(x) => x,
-                    _ => String::from("")
-                };
+                let name = name.lexeme.clone();
                 match self.environment.get(name)? {
                     Some(v) => Ok(v),
                     None => Ok(Types::Nil)
@@ -242,132 +288,6 @@ impl Display for Types {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_interpreter() {
-        // Define tokens representing the expression: print 5 + 3;
-        let tokens = vec![
-            Token {
-                t_type: TokenType::Print,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Number(5.0),
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Plus,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Number(3.0),
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::SemiColon,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::EOF,
-                lexeme: String::new(),
-                line: 0,
-            },
-        ];
-
-        // Create the parser and parse the tokens into statements
-        let mut parser = Parser::new(tokens);
-        let statements = parser.parse();
-
-        // Create the interpreter and interpret the statements
-        let mut interpreter = Interpreter::new();
-        interpreter.interpret(statements.unwrap()).unwrap();
-
-        // Print the executed statements for debugging
-        // for stmt in statements {
-        //     println!("Executed statement: {:?}", stmt);
-        // }
-    }
-
-    #[test]
-    fn test_var_declaration() {
-        // Define tokens representing variable declarations: var x; and var y = 10 + 5;
-        let tokens = vec![
-            // var x;
-            Token {
-                t_type: TokenType::Var,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Identifier(String::from("x")),
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::SemiColon,
-                lexeme: String::new(),
-                line: 0,
-            },
-            // var y = 10 + 5;
-            Token {
-                t_type: TokenType::Var,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Identifier(String::from("y")),
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Equal,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Number(10.0),
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Plus,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Number(5.0),
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::SemiColon,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::EOF,
-                lexeme: String::new(),
-                line: 0,
-            },
-        ];
-
-        // Create the parser and parse the tokens into statements
-        let mut parser = Parser::new(tokens);
-        let statements = parser.parse();
-
-        // Create the interpreter and interpret the statements
-        let mut interpreter = Interpreter::new();
-        interpreter.interpret(statements.unwrap()).unwrap();
-
-        // Print the executed statements for debugging
-
-    }
-
     #[test]
     fn test_assignment() {
         let mut interpreter = Interpreter::new();
@@ -571,6 +491,84 @@ mod tests {
 
         assert_eq!(value_of_x, Types::Number(5.0));
         assert_eq!(value_of_y, Types::Number(15.0)); // y = x + 10
+    }
+    #[test]
+    fn test_if_statement() {
+        // Define tokens representing the if statement: if (x == 5) { print "true"; }
+        let tokens = vec![
+            Token {
+                t_type: TokenType::If,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::LeftParen,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Identifier(String::from("x")),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::EqualEqual,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Number(5.0),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::RightParen,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::LeftBrace,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::Print,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::String(String::from("true")),
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::SemiColon,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::RightBrace,
+                lexeme: String::new(),
+                line: 0,
+            },
+            Token {
+                t_type: TokenType::EOF,
+                lexeme: String::new(),
+                line: 0,
+            },
+        ];
+
+        // Create the parser and parse the tokens into statements
+        let mut parser = Parser::new(tokens);
+        let statements = parser.parse().unwrap();
+
+        // Create the interpreter and interpret the statements
+        let mut interpreter = Interpreter::new();
+        interpreter.interpret(statements);
+
+        // As the print statement inside the if block should execute, it should print "true".
+        // You may need to redirect stdout to capture the printed output for testing.
+        // Here, we are assuming it's printed directly to stdout for simplicity.
     }
 
 

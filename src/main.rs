@@ -87,17 +87,6 @@ pub fn run_file(my_str: &str) -> Result<(), Box<dyn std::error::Error + 'static>
 }
 
 pub fn run(token_stream : &[u8]){
-   // let stream: proc_macro2::TokenStream = token_stream.parse().unwrap();
-   //  let vec_token_stream = stream.into_iter().collect::<Vec<_>>();
-   //  for t in vec_token_stream{
-   //      println!("{:?}", t);
-   //      unsafe {
-   //          if HAD_ERROR {
-   //              exit(65);
-   //          }
-   //      }
-   //
-   //  }
 
     let mut scanner = scanner::Scanner::new(&*token_stream);
     let tokens= scanner.scan_tokens();

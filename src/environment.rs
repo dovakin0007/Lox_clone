@@ -38,6 +38,7 @@ impl Environment{
     pub fn get(&mut self, name: String) -> Result<Option<Types>, Error> {
 
         if self.values.borrow().contains_key(&name.clone()) == true{
+            println!("{:?}",self.values.clone().borrow().get(&name).cloned().unwrap());
             Ok(self.values.borrow_mut().get_mut(&name).cloned().unwrap())
         }else {
             if let Some(ref mut enclosing) = self.enclosing {

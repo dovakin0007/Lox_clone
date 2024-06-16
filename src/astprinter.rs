@@ -40,6 +40,11 @@ impl Visitor for AstPrinter {
                 ref right,
                 ..
             } => format!("(Binary {:?} {:?} {:?})", op, self.visit_expression(left), self.visit_expression(right)),
+
+            Expr::Call {ref callee, ref paren, ref arguments ,..} =>{
+                format!("(Call {:?} {:?})", self.visit_expression(callee), arguments.iter().map(|x| self.visit_expression(x)).collect::<String>())
+            },
+
             Expr::Grouping {
                 ref expr,
                 ..
@@ -73,6 +78,21 @@ impl Visitor for AstPrinter {
         match s {
             Stmt::Block(ref statements) => format!("(Block Statement {:?})", statements.iter().map(|x| self.visit_statement(s)).collect::<String>()),
             Stmt::Expr(ref expr) => format!("(Expression Statement {})", self.visit_expression(expr)),
+
+            Stmt::Function(ref name, ref parameters, ref body) =>{
+                format!(
+                    "(FunctionDeclaration Statement \n\tname: {:?} \n\tparameters: [{}] \n\tbody: {} \n)",
+                    name,
+                    parameters
+                        .iter()
+                        .map(|t| format!("{:?}", t))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    body.iter()
+                        .map(|s| self.visit_statement(s))
+                        .collect::<String>()
+                )
+            },
             Stmt::IfStmt(ref expr, ref then_stmt ,ref else_stmt ) => {
                 format!("(If Statement {:?}, {:?},{:?}", self.visit_expression(expr), self.visit_statement(then_stmt),
                         match else_stmt {
@@ -82,6 +102,12 @@ impl Visitor for AstPrinter {
                 )
             }
             Stmt::Print(ref expr) => format!("Print Statement {}", self.visit_expression(expr).as_str()),
+            Stmt::Return(ref token, ref expr) => format!("Return Statement {:?} {:?}", token,
+            match expr {
+                &Some(ref expr) => self.visit_expression(expr),
+                &None =>"nil".to_string(),
+            }
+            ),
 
             Stmt::VarDeclaration(ref token, ref expr_opt) => format!("Variable Declaration {:?} {:?}", token,
                                                                      match expr_opt {

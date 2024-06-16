@@ -6,6 +6,7 @@ mod parser;
 mod interpreter;
 mod environment;
 mod error;
+mod function;
 
 use std::{env, process, fs};
 use std::io::stdin;

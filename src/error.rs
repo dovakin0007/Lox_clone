@@ -1,5 +1,6 @@
 use std::fmt;
 use std::fmt::{Debug, Formatter, write};
+use crate::interpreter::Types;
 use crate::token::{Token, TokenType};
 
 pub fn error(line: u32, message:&str)  {
@@ -25,6 +26,9 @@ pub enum Error {
         token: Token,
         message: String,
     },
+    Return {
+        value: Types
+    },
     InvalidStmt
 }
 
@@ -33,6 +37,7 @@ impl fmt::Display for Error {
      match self {
          Error::Parse => write!(f, "ParseError"),
          Error::RunTime {message, ..} => write!(f, "RuntimeError {}", message),
+         Error::Return {value}=> write!(f,"Return {:?}", value ),
          Error::InvalidStmt => write!(f,"invalid Statement or Null")
      }
     }

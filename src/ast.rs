@@ -25,6 +25,11 @@ pub enum Expr {
         op: Token,
         right: Box<Expr>,
     },
+    Call {
+        callee: Box<Expr>,
+        paren: Token,
+        arguments: Vec<Expr>,
+    },
     Grouping {
         expr: Box<Expr>,
     },
@@ -48,8 +53,10 @@ pub enum Expr {
 pub enum Stmt {
     Block(Vec<Stmt>),
     Expr(Expr),
+    Function(Token, Vec<Token>, Vec<Stmt>),
     IfStmt(Expr, Box<Stmt>, Option<Box<Stmt>>),
     Print(Expr),
+    Return(Token, Option<Expr>),
     VarDeclaration(Token, Option<Expr>),
     While(Expr, Box<Stmt>),
     Null,

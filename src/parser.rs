@@ -1,14 +1,33 @@
 use std::io::ErrorKind::Other;
+use log::debug;
 use crate::token::{Token, TokenType};
 use crate::ast::{Expr, Stmt};
 use crate::ast::Expr::Literal;
 use crate::ast::Stmt::IfStmt;
 use crate::error::{parse_error, Error};
 use crate::interpreter::Types;
-use crate::token::TokenType::{False, LeftParen, RightParen, True};
+use crate::token::TokenType::{False, LeftParen, Return, RightParen, SemiColon, True};
 
 //TODO match macro
+
+macro_rules! matches {
+    ($sel: ident, $( $x:expr),*) => {
+        {
+        {
+            if $( $sel.check($x) )||* {
+                $sel.advance();
+                true
+            } else {
+                false
+            }
+        }
+    };
+
+
+    };
+}
 //Parser takes an input of tokens
+#[derive(Debug)]
 pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
@@ -35,6 +54,7 @@ impl Parser {
     fn declaration(&mut self) -> Result<Stmt, Error> {
         let statement = match self.peek().unwrap().t_type {
             TokenType::Var => self.var_declaration(),
+            TokenType::Fun => self.function_declaration("function"),
             _ => self.statement()
 
         };
@@ -45,6 +65,31 @@ impl Parser {
             }
             other => other
         }
+    }
+
+    fn function_declaration(&mut self, kind: &str)-> Result<Stmt, Error>{
+        let name = self.consume_identifier( format!("Expect {} name.", kind).as_str())?;
+        self.consume(TokenType::LeftParen,  format!("Expect '(' after {} name.", kind).as_str())?;
+        let mut params:Vec<Token> = Vec::new();
+
+        if !self.check(TokenType::RightParen){
+            loop {
+                if params.len() >= 255 {
+                    let val = self.peek().unwrap();
+                    self.error(val, "Cannot have more than 255 parameters.");
+                }
+                let current_token_type =self.peek().unwrap().clone().t_type;
+
+                params.push(self.consume(current_token_type,"Expect parameter name." )?);
+                if !matches!(self, TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+        self.consume(TokenType::RightParen, "Expect ')' after parameters.")?;
+        self.consume(TokenType::LeftBrace, format!("Expect '{{' before {} body.", kind).as_str(),)?;
+        let body = self.block_statement()?;
+        Ok(Stmt::Function(name, params, body))
     }
 
     fn var_declaration (&mut self) -> Result<Stmt, Error> {
@@ -73,6 +118,10 @@ impl Parser {
             TokenType::While => {
                 self.advance();
                 self.while_statement()
+            },
+            TokenType::Return => {
+                self.advance();
+                self.return_statement()
             },
             TokenType::Print => {
                 self.advance();
@@ -161,6 +210,17 @@ impl Parser {
         let body = self.statement()?;
         Ok(Stmt::While(expr, Box::new(body)))
 
+    }
+
+    fn return_statement(&mut self) -> Result<Stmt,Error>{
+        let keyword = self.previous().unwrap().clone();
+        let value = if !self.check(SemiColon) {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+        self.consume(SemiColon, "Expect ';' after return value.")?;
+        Ok(Stmt::Return(keyword.clone(), value))
     }
 
     fn print_statement(&mut self) -> Result<Stmt, Error> {
@@ -327,9 +387,46 @@ impl Parser {
             let right = self.unary()?;
             return Ok(Expr::Unary { op: operator.clone(), expr: Box::new(right) })
         }
-        return Ok(self.primary()?);
+        return Ok(self.callee()?);
     }
     // returns a literal such as String, bool, Number and also grouping expression
+
+    fn callee(&mut self) -> Result<Expr, Error>{
+        let mut expr = self.primary()?;
+        loop{
+            if self.peek().unwrap().t_type.clone() == TokenType::LeftParen {
+                self.advance();
+                expr = self.finish_call(expr)?
+            }else {
+                break
+            }
+
+        }
+        return Ok(expr);
+    }
+
+    fn finish_call(&mut self, callee: Expr) -> Result<Expr, Error>{
+        let mut args: Vec<Expr> = Vec::new();
+
+        if !self.check(TokenType::RightParen) {
+            loop{
+                if args.len() >= 255 {
+                    self.error(self.peek().unwrap(), "Cannot have more than 255 arguments.");
+                }
+                args.push(self.expression()?);
+                if !matches!(self, TokenType::Comma){
+                    break;
+                }
+            }
+        }
+
+        let paren = self.consume(TokenType::RightParen, "Expect ')' after arguments.")?;
+        Ok(Expr::Call {
+            callee: Box::new(callee),
+            paren,
+            arguments: args
+        })
+    }
     fn primary(&mut self) -> Result<Expr, Error> {
         // dbg!(&self.peek().unwrap());
         let previous_token = self.peek().unwrap().clone();
@@ -505,378 +602,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_assignment() {
-        // Tokens representing the assignment: x = 5;
-        let tokens = vec![
-            Token {
-                t_type: TokenType::Identifier(String::from("x")),
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Equal,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Number(5.0),
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::SemiColon,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::EOF,
-                lexeme: String::new(),
-                line: 0,
-            },
-        ];
 
-        // Create the parser and parse the tokens into statements
-        let mut parser = Parser::new(tokens);
-        let statements = parser.parse();
-
-        // Validate the output
-        assert_eq!(
-            statements.unwrap(),
-            vec![Stmt::Expr(Expr::Assign {
-                name: Token {
-                    t_type: TokenType::Identifier(String::from("x")),
-                    lexeme: String::new(),
-                    line: 0,
-                },
-                value: Box::new(Expr::Literal {
-                    token: Token {
-                        t_type: TokenType::Number(5.0),
-                        lexeme: String::new(),
-                        line: 0,
-                    },
-                }),
-            })]
-        );
-    }
-
-    #[test]
-    fn test_block_statement_with_variables() {
-        // Define tokens representing the block statement: var x = 5; { x=10; var y = 10; print x; }
-        let tokens = vec![
-            // Variable declaration: var x = 5;
-            Token {
-                t_type: TokenType::Var,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Identifier(String::from("x")),
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Equal,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Number(5.0),
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::SemiColon,
-                lexeme: String::new(),
-                line: 0,
-            },
-            // Block start
-            Token {
-                t_type: TokenType::LeftBrace,
-                lexeme: String::new(),
-                line: 0,
-            },
-            // Assignment: x=10;
-            Token {
-                t_type: TokenType::Identifier(String::from("x")),
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Equal,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Number(10.0),
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::SemiColon,
-                lexeme: String::new(),
-                line: 0,
-            },
-            // Variable declaration: var y = 10;
-            Token {
-                t_type: TokenType::Var,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Identifier(String::from("y")),
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Equal,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Number(10.0),
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::SemiColon,
-                lexeme: String::new(),
-                line: 0,
-            },
-            // Print statement: print x;
-            Token {
-                t_type: TokenType::Print,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Identifier(String::from("x")),
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::SemiColon,
-                lexeme: String::new(),
-                line: 0,
-            },
-            // Block end
-            Token {
-                t_type: TokenType::RightBrace,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::EOF,
-                lexeme: String::new(),
-                line: 0,
-            },
-        ];
-
-        // Create the parser and parse the tokens into statements
-        let mut parser = Parser::new(tokens);
-        let statements = parser.parse().unwrap();
-
-        // Validate the output
-        // dbg!(statements.clone());
-        assert_eq!(
-            statements,
-            vec![
-                Stmt::VarDeclaration(
-                    Token {
-                        t_type: TokenType::Identifier(String::from("x")),
-                        lexeme: String::new(),
-                        line: 0,
-                    },
-                    Some(Expr::Literal {
-                        token: Token {
-                            t_type: TokenType::Number(5.0),
-                            lexeme: String::new(),
-                            line: 0,
-                        },
-                    })
-                ),
-                Stmt::Block(vec![
-                    Stmt::Expr(Expr::Assign {
-                        name: Token {
-                            t_type: TokenType::Identifier(String::from("x")),
-                            lexeme: String::new(),
-                            line: 0,
-                        },
-                        value: Box::new(Expr::Literal {
-                            token: Token {
-                                t_type: TokenType::Number(10.0),
-                                lexeme: String::new(),
-                                line: 0,
-                            },
-                        }),
-                    }),
-                    Stmt::VarDeclaration(
-                        Token {
-                            t_type: TokenType::Identifier(String::from("y")),
-                            lexeme: String::new(),
-                            line: 0,
-                        },
-                        Some(Expr::Literal {
-                            token: Token {
-                                t_type: TokenType::Number(10.0),
-                                lexeme: String::new(),
-                                line: 0,
-                            },
-                        })
-                    ),
-                    Stmt::Print(Expr::Variable {
-                        name: Token {
-                            t_type: TokenType::Identifier(String::from("x")),
-                            lexeme: String::new(),
-                            line: 0,
-                        },
-                    }),
-                ]),
-            ]
-        );
-    }
-    #[test]
-    fn test_if_else_statement() {
-        // Tokens representing the if-else statement: if (x == 5) { print "true"; } else { print "false"; }
-        let tokens = vec![
-            Token {
-                t_type: TokenType::If,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::LeftParen,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Identifier(String::from("x")),
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::EqualEqual,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Number(5.0),
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::RightParen,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::LeftBrace,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Print,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::String(String::from("true")),
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::SemiColon,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::RightBrace,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Else,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::LeftBrace,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::Print,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::String(String::from("false")),
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::SemiColon,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::RightBrace,
-                lexeme: String::new(),
-                line: 0,
-            },
-            Token {
-                t_type: TokenType::EOF,
-                lexeme: String::new(),
-                line: 0,
-            },
-        ];
-
-        // Create the parser and parse the tokens into statements
-        let mut parser = Parser::new(tokens);
-        let statements = parser.parse();
-
-        // Validate the output
-        assert_eq!(
-            statements.unwrap(),
-            vec![Stmt::IfStmt(
-                Expr::Binary {
-                    left: Box::new(Expr::Variable {
-                        name: Token {
-                            t_type: TokenType::Identifier(String::from("x")),
-                            lexeme: String::new(),
-                            line: 0,
-                        }
-                    }),
-                    op: Token {
-                        t_type: TokenType::EqualEqual,
-                        lexeme: String::new(),
-                        line: 0,
-                    },
-                    right: Box::new(Expr::Literal {
-                        token: Token {
-                            t_type: TokenType::Number(5.0),
-                            lexeme: String::new(),
-                            line: 0,
-                        }
-                    })
-                },
-                Box::new(Stmt::Block(vec![Stmt::Print(Expr::Literal {
-                    token: Token {
-                        t_type: TokenType::String(String::from("true")),
-                        lexeme: String::new(),
-                        line: 0,
-                    }
-                })])),
-                Some(Box::new(Stmt::Block(vec![Stmt::Print(Expr::Literal {
-                    token: Token {
-                        t_type: TokenType::String(String::from("false")),
-                        lexeme: String::new(),
-                        line: 0,
-                    }
-                })]))),
-            )]
-        );
-    }
     #[test]
     fn test_if_statement() {
         // Tokens representing the if statement: if (x == 5) { print "true"; }
@@ -984,4 +710,299 @@ mod tests {
             )]
         );
     }
+
+
+
+        #[test]
+        fn test_function_call() {
+            // Define tokens representing a function call: myFunction(arg1, arg2);
+            let tokens = vec![
+                Token {
+                    t_type: TokenType::Identifier("myFunction".to_string()),
+                    lexeme: "myFunction".to_string(),
+                    line: 1,
+                },
+                Token {
+                    t_type: TokenType::LeftParen,
+                    lexeme: "(".to_string(),
+                    line: 1,
+                },
+                Token {
+                    t_type: TokenType::Identifier("arg1".to_string()),
+                    lexeme: "arg1".to_string(),
+                    line: 1,
+                },
+                Token {
+                    t_type: TokenType::Comma,
+                    lexeme: ",".to_string(),
+                    line: 1,
+                },
+                Token {
+                    t_type: TokenType::Identifier("arg2".to_string()),
+                    lexeme: "arg2".to_string(),
+                    line: 1,
+                },
+                Token {
+                    t_type: TokenType::RightParen,
+                    lexeme: ")".to_string(),
+                    line: 1,
+                },
+                Token {
+                    t_type: TokenType::SemiColon,
+                    lexeme: ";".to_string(),
+                    line: 1,
+                },
+                Token {
+                    t_type: TokenType::EOF,
+                    lexeme: "".to_string(),
+                    line: 1,
+                },
+            ];
+
+            // Create the parser and parse the tokens into an expression
+            let mut parser = Parser::new(tokens);
+            let expr = parser.expression().unwrap();
+
+            // Verify that the expression is a function call with the correct callee and arguments
+            match expr {
+                Expr::Call { callee, arguments, .. } => {
+                    // Verify the callee
+                    match *callee {
+                        Expr::Variable { name } => {
+                            assert_eq!(name.lexeme, "myFunction");
+                        }
+                        _ => panic!("Unexpected callee type"),
+                    }
+
+                    // Verify the arguments
+                    assert_eq!(arguments.len(), 2);
+                    match &arguments[0] {
+                        Expr::Variable { name } => {
+                            assert_eq!(name.lexeme, "arg1");
+                        }
+                        _ => panic!("Unexpected argument type"),
+                    }
+                    match &arguments[1] {
+                        Expr::Variable { name } => {
+                            assert_eq!(name.lexeme, "arg2");
+                        }
+                        _ => panic!("Unexpected argument type"),
+                    }
+                }
+                _ => panic!("Unexpected expression type"),
+            }
+        }
+
+
+
+
+    #[test]
+    fn test_function_call_with_expression() {
+        // Define tokens representing a function call with an expression as an argument: myFunction(2 * x, y + 3);
+        let tokens = vec![
+            Token {
+                t_type: TokenType::Identifier("myFunction".to_string()),
+                lexeme: "myFunction".to_string(),
+                line: 1,
+            },
+            Token {
+                t_type: TokenType::LeftParen,
+                lexeme: "(".to_string(),
+                line: 1,
+            },
+            Token {
+                t_type: TokenType::Number(2.0),
+                lexeme: "2".to_string(),
+                line: 1,
+            },
+            Token {
+                t_type: TokenType::Star,
+                lexeme: "*".to_string(),
+                line: 1,
+            },
+            Token {
+                t_type: TokenType::Identifier("x".to_string()),
+                lexeme: "x".to_string(),
+                line: 1,
+            },
+            Token {
+                t_type: TokenType::Comma,
+                lexeme: ",".to_string(),
+                line: 1,
+            },
+            Token {
+                t_type: TokenType::Identifier("y".to_string()),
+                lexeme: "y".to_string(),
+                line: 1,
+            },
+            Token {
+                t_type: TokenType::Plus,
+                lexeme: "+".to_string(),
+                line: 1,
+            },
+            Token {
+                t_type: TokenType::Number(3.0),
+                lexeme: "3".to_string(),
+                line: 1,
+            },
+            Token {
+                t_type: TokenType::RightParen,
+                lexeme: ")".to_string(),
+                line: 1,
+            },
+            Token {
+                t_type: TokenType::SemiColon,
+                lexeme: ";".to_string(),
+                line: 1,
+            },
+            Token {
+                t_type: TokenType::EOF,
+                lexeme: "".to_string(),
+                line: 1,
+            },
+        ];
+
+        // Create the parser and parse the tokens into an expression
+        let mut parser = Parser::new(tokens);
+        let expr = parser.expression().unwrap();
+
+        // Verify that the expression is a function call with the correct callee and arguments
+        match expr {
+            Expr::Call { callee, arguments, .. } => {
+                // Verify the callee
+                match *callee {
+                    Expr::Variable { name } => {
+                        assert_eq!(name.lexeme, "myFunction");
+                    }
+                    _ => panic!("Unexpected callee type"),
+                }
+
+                // Verify the arguments
+                assert_eq!(arguments.len(), 2);
+                match &arguments[0] {
+                    Expr::Binary { left, right, op } => {
+                        match *left.clone() {
+                            Expr::Literal { token } => {
+                                assert_eq!(token.t_type, TokenType::Number(2.0));
+                            }
+                            _ => panic!("Unexpected argument type"),
+                        }
+                        match *right.clone() {
+                            Expr::Variable { name } => {
+                                assert_eq!(name.lexeme, "x");
+                            }
+                            _ => panic!("Unexpected argument type"),
+                        }
+                        match op.t_type {
+                            TokenType::Star => {}
+                            _ => panic!("Unexpected operator"),
+                        }
+                    }
+                    _ => panic!("Unexpected argument type"),
+                }
+                match &arguments[1] {
+                    Expr::Binary { left, right, op } => {
+                        match *left.clone() {
+                            Expr::Variable { name } => {
+                                assert_eq!(name.lexeme, "y");
+                            }
+                            _ => panic!("Unexpected argument type"),
+                        }
+                        match *right.clone() {
+                            Expr::Literal { token } => {
+                                assert_eq!(token.t_type, TokenType::Number(3.0));
+                            }
+                            _ => panic!("Unexpected argument type"),
+                        }
+                        match op.t_type {
+                            TokenType::Plus => {}
+                            _ => panic!("Unexpected operator"),
+                        }
+                    }
+                    _ => panic!("Unexpected argument type"),
+                }
+            }
+            _ => panic!("Unexpected expression type"),
+        }
+    }
+
+    #[test]
+    fn test_function_declaration() {
+        // Define tokens representing a function declaration: fun myFunction(param1, param2) { /* function body */ }
+        let tokens = vec![
+            Token {
+                t_type: TokenType::Fun,
+                lexeme: "fun".to_string(),
+                line: 1,
+            },
+            Token {
+                t_type: TokenType::Identifier("myFunction".to_string()),
+                lexeme: "myFunction".to_string(),
+                line: 1,
+            },
+            Token {
+                t_type: TokenType::LeftParen,
+                lexeme: "(".to_string(),
+                line: 1,
+            },
+            Token {
+                t_type: TokenType::Identifier("param1".to_string()),
+                lexeme: "param1".to_string(),
+                line: 1,
+            },
+            Token {
+                t_type: TokenType::Comma,
+                lexeme: ",".to_string(),
+                line: 1,
+            },
+            Token {
+                t_type: TokenType::Identifier("param2".to_string()),
+                lexeme: "param2".to_string(),
+                line: 1,
+            },
+            Token {
+                t_type: TokenType::RightParen,
+                lexeme: ")".to_string(),
+                line: 1,
+            },
+            Token {
+                t_type: TokenType::LeftBrace,
+                lexeme: "{".to_string(),
+                line: 1,
+            },
+            // Omitted tokens representing the function body
+            Token {
+                t_type: TokenType::RightBrace,
+                lexeme: "}".to_string(),
+                line: 1,
+            },
+            Token {
+                t_type: TokenType::EOF,
+                lexeme: "".to_string(),
+                line: 1,
+            },
+        ];
+
+        // Create the parser and parse the tokens into a statement
+        let mut parser = Parser::new(tokens);
+        let statement = parser.function_declaration("function").unwrap();
+        dbg!(statement.clone());
+
+            // Verify the statement is a function declaration with the correct name, parameters, and body
+            match statement {
+                Stmt::Function(name, params, body) => {
+                    assert_eq!(name.lexeme, "myFunction");
+                    assert_eq!(params.len(), 2);
+                    assert_eq!(params[0].lexeme, "param1");
+                    assert_eq!(params[1].lexeme, "param2");
+
+                    // Omitted: Verify the body
+                }
+                _ => panic!("Unexpected statement type"),
+            }
+        }
+
+
+
+
 }

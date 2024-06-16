@@ -115,18 +115,21 @@ impl Parser {
                 self.advance();
                 self.if_statement()
             },
-            TokenType::While => {
+
+            TokenType::Print => {
                 self.advance();
-                self.while_statement()
+                self.print_statement()
             },
             TokenType::Return => {
                 self.advance();
                 self.return_statement()
             },
-            TokenType::Print => {
+            TokenType::While => {
                 self.advance();
-                self.print_statement()
+                self.while_statement()
             },
+
+
             TokenType::LeftBrace => {
                 self.advance();
                 Ok(Stmt::Block(self.block_statement()?))

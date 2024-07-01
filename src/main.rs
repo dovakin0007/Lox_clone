@@ -7,11 +7,13 @@ mod interpreter;
 mod environment;
 mod error;
 mod function;
+mod resolver;
 
 use std::{env, process, fs};
 use std::io::stdin;
 use std::process::exit;
 use log::debug;
+use resolver::Resolver;
 use crate::ast::{Expr, Stmt};
 use crate::parser::Parser;
 use crate::token::{Token, TokenType};
@@ -93,9 +95,11 @@ pub fn run(token_stream : &[u8]){
     let tokens= scanner.scan_tokens();
 
     let mut  parser:Parser= Parser::new(tokens);
-    let expressions:Vec<Stmt> = parser.parse().unwrap();
+    let statements:Vec<Stmt> = parser.parse().unwrap();
     let mut interpreter = interpreter::Interpreter::new();
-    interpreter.interpret(expressions);
+    let mut resolver = Resolver::new(&mut interpreter);
+    resolver.resolve_stmts(&statements);
+    interpreter.interpret(statements);
 
 }
 

@@ -1,24 +1,23 @@
 use crate::ast::{Expr, Stmt, Visitor};
 use crate::environment::Environment;
 use crate::error::Error::InvalidStmt;
-use crate::error::{error, Error};
-use crate::function;
+use crate::error::Error;
 use crate::function::{Callable, NativeFunction, UserFunction};
 use crate::token::{Token, TokenType};
-use std::cmp::PartialEq;
-use std::env::args;
+use std::collections::HashMap;
+
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::rc::Rc;
 use std::string::String;
 use std::time::{SystemTime, UNIX_EPOCH};
-use log::debug;
-use crate::ast::Stmt::Function;
+
 
 //represents an Interpreter struct
-
+#[derive(Debug)]
 pub struct Interpreter {
     pub globals: Environment,
     environment: Environment,
+    locals: HashMap<Token, usize>
 }
 
 macro_rules! istruthy {
@@ -58,6 +57,7 @@ impl Interpreter {
         Self {
             globals: globals.clone(),
             environment: globals.clone(),
+            locals: HashMap::new(),
         }
     }
 
@@ -92,6 +92,23 @@ impl Interpreter {
         let result = steps();
         self.environment = previous;
         result
+    }
+
+    pub fn resolve(&mut self, name: &Token, depth: usize ){
+        self.locals.insert(name.clone(), depth);
+    }
+
+
+    pub fn lookup_variable(&mut self, name: &Token) -> Result<Types, Error> {
+        let distance =self.locals.get(name);
+     
+        if let Some(dist) = distance{
+            self.environment.get_at(dist, name)
+        }else {
+            self.globals.get(name)
+        }
+
+
     }
 }
 impl Visitor for Interpreter {
@@ -182,7 +199,12 @@ impl Visitor for Interpreter {
                 ..
             } => {
                 let new_value = self.visit_expression(value)?;
-                self.environment.assign(&name, new_value.clone())?;
+                if let Some(distance) = self.locals.get(name) {
+                    self.environment.assign_at(name, &new_value, distance)?;
+                }else {
+                    self.environment.assign(name, &new_value)?;
+                }
+               
                 return Ok(new_value);
             }
             &Expr::Binary {
@@ -342,12 +364,11 @@ impl Visitor for Interpreter {
                     })
                 }
             }
-            &Expr::Variable { ref name, .. } => {
-                let name = name.lexeme.clone();
-                match self.environment.get(name)? {
-                    Some(v) => Ok(v),
-                    None => Ok(Types::Nil),
-                }
+            &Expr::Variable { ref name,.. } => {
+             
+                 self.environment.get(name);
+
+                self.lookup_variable(name)
             }
         }
     }

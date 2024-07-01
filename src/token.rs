@@ -1,5 +1,6 @@
 use std::fmt;
 use std::fmt::{Display, Formatter};
+use std::hash::{Hasher, Hash};
 
     #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
@@ -89,4 +90,13 @@ impl Display for Token {
         self.t_type.fmt(f)
     }
 }
+
+impl  Hash for Token {
+    fn hash<H: Hasher>(&self, state:&mut H){
+        self.lexeme.hash(state);
+        self.line.hash(state);
+    }
+}
+
+impl Eq for Token{}
 

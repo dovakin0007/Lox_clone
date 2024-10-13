@@ -1,53 +1,50 @@
-pub mod token;
-mod scanner;
 mod ast;
 mod astprinter;
-mod parser;
-mod interpreter;
+mod class;
 mod environment;
 mod error;
 mod function;
+mod interpreter;
+mod parser;
 mod resolver;
+mod scanner;
+pub mod token;
 
-use std::{env, process, fs};
-use std::io::stdin;
-use std::process::exit;
-use log::debug;
-use resolver::Resolver;
 use crate::ast::{Expr, Stmt};
 use crate::parser::Parser;
 use crate::token::{Token, TokenType};
+use log::debug;
+use resolver::Resolver;
+use std::io::stdin;
+use std::process::exit;
+use std::{env, fs, process};
 
 static mut HAD_ERROR: bool = false;
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() >4{
+    if args.len() > 4 {
         println!("Usage: rlox [script]");
 
         process::exit(1)
-    }else if args.len() ==3 {
+    } else if args.len() == 3 {
         let path = args.get(2);
         println!("{:?}", path);
         match path {
             Some(x) => {
                 run_file(x).unwrap_or_else(|_| exit(1));
-            },
+            }
             None => {
                 println!("Usage: rlox [script]");
                 process::exit(1)
             }
-
         }
-    }else if args.len()==1{
+    } else if args.len() == 1 {
         run_prompt().expect("UNABLE TO READ LINE")
     }
-
-
 }
 
-
-pub fn run_prompt() -> Result<(), Box<dyn std::error::Error + 'static>>{
+pub fn run_prompt() -> Result<(), Box<dyn std::error::Error + 'static>> {
     let mut buffer = String::new();
 
     loop {
@@ -56,18 +53,16 @@ pub fn run_prompt() -> Result<(), Box<dyn std::error::Error + 'static>>{
         let res = match buffer.trim_end().as_bytes() {
             b"" => {
                 exit(1);
-            },
+            }
             line => line,
-
         };
         run(res);
         buffer.clear();
     }
-
 }
 
-pub fn run_file(my_str: &str) -> Result<(), Box<dyn std::error::Error + 'static>>{
-    let bytes=fs::read_to_string(my_str);
+pub fn run_file(my_str: &str) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    let bytes = fs::read_to_string(my_str);
     match bytes {
         Ok(token_string) => {
             let current_lines = token_string.into_bytes();
@@ -81,37 +76,39 @@ pub fn run_file(my_str: &str) -> Result<(), Box<dyn std::error::Error + 'static>
             run(&current_lines);
             Ok(())
         }
-        Err(e) => if e.kind() == std::io::ErrorKind::Interrupted{
-            panic!("Unable to Open the file at given path: {:?}", e);
-        }else{
-            panic!(" {:?}", e);
+        Err(e) => {
+            if e.kind() == std::io::ErrorKind::Interrupted {
+                panic!("Unable to Open the file at given path: {:?}", e);
+            } else {
+                panic!(" {:?}", e);
+            }
         }
     }
 }
 
-pub fn run(token_stream : &[u8]){
-
+pub fn run(token_stream: &[u8]) {
     let mut scanner = scanner::Scanner::new(&*token_stream);
-    let tokens= scanner.scan_tokens();
+    let tokens = scanner.scan_tokens();
 
-    let mut  parser:Parser= Parser::new(tokens);
-    let statements:Vec<Stmt> = parser.parse().unwrap();
+    let mut parser: Parser = Parser::new(tokens);
+    let statements: Vec<Stmt> = parser.parse().unwrap();
     let mut interpreter = interpreter::Interpreter::new();
     let mut resolver = Resolver::new(&mut interpreter);
     resolver.resolve_stmts(&statements);
     interpreter.interpret(statements);
-
 }
 
-pub fn error (token: Token, message: &str){
-        if token.t_type == TokenType::EOF {
-            report(token.line, "at end", message)
-        }else{
-            report(token.line, &*token.lexeme, message);
-        }
+pub fn error(token: Token, message: &str) {
+    if token.t_type == TokenType::EOF {
+        report(token.line, "at end", message)
+    } else {
+        report(token.line, &*token.lexeme, message);
+    }
 }
 
-pub fn report(line: u32, where_line: &str, message: &str){
+pub fn report(line: u32, where_line: &str, message: &str) {
     eprintln!("[line {:?} ] Error {:?} :  {:?}", line, where_line, message);
-    unsafe { HAD_ERROR = true; }
+    unsafe {
+        HAD_ERROR = true;
+    }
 }

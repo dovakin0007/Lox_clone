@@ -1,23 +1,24 @@
 use crate::ast::{Expr, Stmt, Visitor};
+use crate::class::Class;
 use crate::environment::Environment;
-use crate::error::Error::InvalidStmt;
 use crate::error::Error;
+use crate::error::Error::InvalidStmt;
 use crate::function::{Callable, NativeFunction, UserFunction};
 use crate::token::{Token, TokenType};
+use std::cell::RefCell;
 use std::collections::HashMap;
 
-use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use std::fmt::{write, Debug, Display, Formatter, Result as FmtResult};
 use std::rc::Rc;
 use std::string::String;
 use std::time::{SystemTime, UNIX_EPOCH};
-
 
 //represents an Interpreter struct
 #[derive(Debug)]
 pub struct Interpreter {
     pub globals: Environment,
     environment: Environment,
-    locals: HashMap<Token, usize>
+    locals: HashMap<Token, usize>,
 }
 
 macro_rules! istruthy {
@@ -76,6 +77,7 @@ impl Interpreter {
             Types::Number(n) => n.to_string(),
             Types::ReturnString(s) => s,
             Types::Callable(f) => f.to_string(),
+            Types::Class(c) => c.borrow().to_string(),
         }
     }
 
@@ -94,21 +96,18 @@ impl Interpreter {
         result
     }
 
-    pub fn resolve(&mut self, name: &Token, depth: usize ){
+    pub fn resolve(&mut self, name: &Token, depth: usize) {
         self.locals.insert(name.clone(), depth);
     }
 
-
     pub fn lookup_variable(&mut self, name: &Token) -> Result<Types, Error> {
-        let distance =self.locals.get(name);
-     
-        if let Some(dist) = distance{
+        let distance = self.locals.get(name);
+
+        if let Some(dist) = distance {
             self.environment.get_at(dist, name)
-        }else {
+        } else {
             self.globals.get(name)
         }
-
-
     }
 }
 impl Visitor for Interpreter {
@@ -120,30 +119,41 @@ impl Visitor for Interpreter {
                 self.execute_block(stmts, Environment::from(self.environment.clone()))?;
                 Ok(())
             }
+            &Stmt::Class(ref token, ref stmts) => {
+                self.environment.define(token.lexeme.clone(), None);
+                let class = Class::new(token.lexeme.clone());
+                self.environment
+                    .assign(token, &Types::Class(Rc::new(RefCell::new(class))))?;
+                Ok(())
+            }
             &Stmt::Expr(ref Expr) => {
                 self.visit_expression(Expr)?;
                 Ok(())
             }
 
             &Stmt::Function(ref name_token, ref parameters, ref body) => {
-                let user_function = Types::Callable(Rc::new(Box::new(UserFunction{
+                let user_function = Types::Callable(Rc::new(Box::new(UserFunction {
                     name: name_token.clone(),
                     params: parameters.clone(),
                     body: body.clone(),
                     closure: self.environment.clone(),
-                    is_initializer: false
+                    is_initializer: false,
                 })));
 
-                self.environment.define(name_token.lexeme.clone(), Some(user_function));
+                self.environment
+                    .define(name_token.lexeme.clone(), Some(user_function));
 
                 Ok(())
             }
             &Stmt::Return(ref Token, ref expr) => {
-
-                let return_value = expr.clone().map(|v| self.visit_expression(&v))
+                let return_value = expr
+                    .clone()
+                    .map(|v| self.visit_expression(&v))
                     .unwrap_or(Ok(Types::Nil))?;
 
-                Err(Error::Return {value: return_value})
+                Err(Error::Return {
+                    value: return_value,
+                })
             }
             &Stmt::IfStmt(ref Expr, ref then, ref else_option) => {
                 if istruthy!(&self.visit_expression(Expr)?) {
@@ -201,10 +211,10 @@ impl Visitor for Interpreter {
                 let new_value = self.visit_expression(value)?;
                 if let Some(distance) = self.locals.get(name) {
                     self.environment.assign_at(name, &new_value, distance)?;
-                }else {
+                } else {
                     self.environment.assign(name, &new_value)?;
                 }
-               
+
                 return Ok(new_value);
             }
             &Expr::Binary {
@@ -364,9 +374,8 @@ impl Visitor for Interpreter {
                     })
                 }
             }
-            &Expr::Variable { ref name,.. } => {
-             
-                 self.environment.get(name);
+            &Expr::Variable { ref name, .. } => {
+                self.environment.get(name);
 
                 self.lookup_variable(name)
             }
@@ -382,6 +391,7 @@ pub enum Types {
     Boolean(bool),
     Nil,
     Callable(Rc<Box<dyn Callable>>),
+    Class(Rc<RefCell<Class>>),
 }
 
 // implements Display Trait to print
@@ -393,6 +403,7 @@ impl Display for Types {
             &Types::Number(n) => write!(f, "{}", n),
             &Types::ReturnString(ref s) => write!(f, "\"{}\"", s.to_string()),
             &Types::Callable(ref call) => write!(f, "{}", call),
+            &Types::Class(ref class) => write!(f, "{:?}", class),
         }
     }
 }
